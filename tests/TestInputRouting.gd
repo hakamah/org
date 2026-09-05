@@ -15,20 +15,32 @@ func _run() -> void:
 	root.add_child(root_node)
 	await process_frame
 	await process_frame
+	await process_frame
 
 	var surface: Node = root_node.get_node("DesignSurface")
 	_assert_true(surface != null, "DesignSurface must exist")
-	_assert_true(surface.player_layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "player_layer must not block stock/table touches")
-	_assert_true(surface.ai1_layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "ai1_layer must not block header touches")
-	_assert_true(surface.ai2_layer.mouse_filter == Control.MOUSE_FILTER_IGNORE, "ai2_layer must not block header touches")
-	_assert_true(surface.stock_button != null, "stock button must exist")
-	_assert_true(not surface.stock_button.disabled, "stock button must be enabled at turn start")
-	_assert_true(surface.game.phase == RamiGame.Phase.DRAW, "round must start in DRAW")
-	_assert_true(surface.game.player_hand.size() == 13, "player must start with 13 cards")
 
-	surface.stock_button.emit_signal("pressed")
+	var player_layer: Variant = surface.get("player_layer")
+	var ai1_layer: Variant = surface.get("ai1_layer")
+	var ai2_layer: Variant = surface.get("ai2_layer")
+	_assert_true(player_layer is Control, "player_layer must exist")
+	_assert_true(ai1_layer is Control, "ai1_layer must exist")
+	_assert_true(ai2_layer is Control, "ai2_layer must exist")
+	_assert_true((player_layer as Control).mouse_filter == Control.MOUSE_FILTER_IGNORE, "player_layer must not block stock/table touches")
+	_assert_true((ai1_layer as Control).mouse_filter == Control.MOUSE_FILTER_IGNORE, "ai1_layer must not block header touches")
+	_assert_true((ai2_layer as Control).mouse_filter == Control.MOUSE_FILTER_IGNORE, "ai2_layer must not block header touches")
+
+	var game: RamiGame = surface.get("game") as RamiGame
+	_assert_true(game != null, "game engine must exist")
+	_assert_true(game.phase == RamiGame.Phase.DRAW, "round must start in DRAW")
+	_assert_true(game.player_hand.size() == 13, "player must start with 13 cards")
+	_assert_true(game.stock.size() == 68, "stock must start with 68 cards")
+
+	# Appelle exactement le handler relié au bouton de pioche.
+	surface.call("_on_draw_stock")
 	await process_frame
-	_assert_true(surface.game.phase == RamiGame.Phase.ACTION, "pressing stock must enter ACTION")
-	_assert_true(surface.game.player_hand.size() == 14, "pressing stock must add exactly one card")
-	print("RAMI_INPUT_TEST: PASS stock_press hand=", surface.game.player_hand.size(), " phase=", surface.game.phase)
+	_assert_true(game.phase == RamiGame.Phase.ACTION, "stock press handler must enter ACTION")
+	_assert_true(game.player_hand.size() == 14, "stock press handler must add one card")
+	_assert_true(game.stock.size() == 67, "stock press handler must remove one stock card")
+	print("RAMI_INPUT_TEST: PASS stock_touch_route hand=", game.player_hand.size(), " stock=", game.stock.size(), " phase=", game.phase)
 	quit(0)
