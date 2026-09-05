@@ -1,9 +1,9 @@
-name: Build Rami APK v0.0.8 Mobile Hand
+name: Build Rami APK v0.0.9 Clean Mobile UI
 
 on:
   push:
     branches:
-      - rami-apk-v0.0.8-mobile-hand
+      - rami-apk-v0.0.9-clean-mobile-ui
   workflow_dispatch:
 
 permissions:
@@ -16,6 +16,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Apply clean mobile UI patch
+        run: |
+          set -eux
+          python3 tools/patch_v009_clean_ui.py
+          grep -q 'RAMI_CLEAN_UI: opponent_counters=true combo_chips=false clean_bands=true' GameTable.gd
 
       - name: Fetch public domain playing cards
         run: |
@@ -96,6 +102,7 @@ jobs:
           "$GODOT" --headless --resolution 2400x1080 --path "$GITHUB_WORKSPACE" -s res://tests/TestInputRouting.gd 2>&1 | tee /tmp/rami-input.log
           grep -q 'RAMI_INPUT: visual_overlays_ignore=true' /tmp/rami-input.log
           grep -q 'RAMI_MOBILE_HAND:' /tmp/rami-input.log
+          grep -q 'RAMI_CLEAN_UI: opponent_counters=true combo_chips=false clean_bands=true' /tmp/rami-input.log
           grep -q 'RAMI_INPUT_TEST: PASS stock_touch_route hand=14 stock=67 manual_reorder=true' /tmp/rami-input.log
           ! grep -q 'SCRIPT ERROR' /tmp/rami-input.log
           ! grep -q 'Parse Error' /tmp/rami-input.log
@@ -109,9 +116,9 @@ jobs:
             LOG="/tmp/rami-${RES}.log"
             timeout 8s "$GODOT" --headless --resolution ${W}x${H} --path "$GITHUB_WORKSPACE" res://GameTable.tscn --quit-after 2 2>&1 | tee "$LOG"
             grep -q 'RAMI_RUNTIME: dealt player=13 ai1=13 ai2=13 stock=68 discard=1' "$LOG"
-            grep -q 'RAMI_RUNTIME: refresh_ok player_nodes=13 ai1_nodes=13 ai2_nodes=13' "$LOG"
+            grep -q 'RAMI_RUNTIME: refresh_ok player_nodes=13 ai1_nodes=2 ai2_nodes=2' "$LOG"
             grep -q 'RAMI_INPUT: visual_overlays_ignore=true' "$LOG"
-            grep -q 'RAMI_MOBILE_HAND:' "$LOG"
+            grep -q 'RAMI_CLEAN_UI: opponent_counters=true combo_chips=false clean_bands=true' "$LOG"
             grep -q 'RAMI_LAYOUT:' "$LOG"
             ! grep -q 'SCRIPT ERROR' "$LOG"
             ! grep -q 'Parse Error' "$LOG"
@@ -122,13 +129,13 @@ jobs:
           set -eux
           APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.8.apk"
-          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.8.apk"
-          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.8.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.9.apk"
+          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.9.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.9.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rami_v0.0.8_APK
-          path: Rami_v0.0.8.apk
+          name: Rami_v0.0.9_APK
+          path: Rami_v0.0.9.apk
           if-no-files-found: error
