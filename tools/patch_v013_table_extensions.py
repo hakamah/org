@@ -48,6 +48,65 @@ replacement = '''func _ordered_meld(cards: Array[CardInstance], info: Dictionary
 '''
 engine, n = re.subn(pattern, replacement, engine, flags=re.S)
 assert n == 1, f'_ordered_meld replacement failed: {n}'
+
+# Allow several selected cards to complete/extend a table meld in any hand order.
+# First recover Jokers when a selected natural card exactly replaces one, then validate
+# all remaining selected cards together instead of one-by-one.
+pattern = r'''func _simulate_add_to_meld\(existing: Array\[CardInstance\], selected: Array\[CardInstance\], allow_replace: bool\) -> Dictionary:\n.*?(?=func _run_ai_turn\()'''
+replacement = '''func _simulate_add_to_meld(existing: Array[CardInstance], selected: Array[CardInstance], allow_replace: bool) -> Dictionary:
+	var current: Array[CardInstance] = []
+	for card: CardInstance in existing:
+		current.append(card)
+	var remaining: Array[CardInstance] = []
+	for card: CardInstance in selected:
+		remaining.append(card)
+	var recovered: Array[CardInstance] = []
+
+	if allow_replace:
+		var scan: int = 0
+		while scan < remaining.size():
+			var card: CardInstance = remaining[scan]
+			if card.is_joker():
+				scan += 1
+				continue
+			var replaced: bool = false
+			for j: int in range(current.size()):
+				if not current[j].is_joker():
+					continue
+				var test: Array[CardInstance] = []
+				for existing_card: CardInstance in current:
+					test.append(existing_card)
+				var joker: CardInstance = test[j]
+				test.remove_at(j)
+				test.append(card)
+				var info: Dictionary = validate_meld(test)
+				if bool(info.get("valid", false)):
+					current = _ordered_meld(test, info)
+					recovered.append(joker)
+					remaining.remove_at(scan)
+					replaced = true
+					break
+			if not replaced:
+				scan += 1
+
+	# Validate all remaining cards as one final table state. This permits, for example,
+	# selecting 9♥ then 8♥ to extend 5♥-6♥-7♥, because the final 5-6-7-8-9 is valid.
+	if not remaining.is_empty():
+		var combined: Array[CardInstance] = []
+		for existing_card: CardInstance in current:
+			combined.append(existing_card)
+		for extra: CardInstance in remaining:
+			combined.append(extra)
+		var combined_info: Dictionary = validate_meld(combined)
+		if not bool(combined_info.get("valid", false)):
+			return {"ok": false}
+		current = _ordered_meld(combined, combined_info)
+
+	return {"ok": true, "cards": current, "recovered": recovered}
+
+'''
+engine, n = re.subn(pattern, replacement, engine, flags=re.S)
+assert n == 1, f'_simulate_add_to_meld replacement failed: {n}'
 engine_path.write_text(engine, encoding='utf-8')
 
 # --- UI: make the whole meld tappable, not only its owner label ---------------
