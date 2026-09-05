@@ -1,9 +1,9 @@
-name: Build Rami APK v0.0.11b Startup Fix
+name: Build Rami APK v0.0.12 Table Icon
 
 on:
   push:
     branches:
-      - rami-apk-v0.0.11-discard-table
+      - rami-apk-v0.0.12-table-icon
   workflow_dispatch:
 
 permissions:
@@ -23,8 +23,12 @@ jobs:
           python3 tools/patch_v009_clean_ui.py
           python3 tools/patch_v010_combo_table.py
           python3 tools/patch_v011_discard_table.py
+          python3 tools/patch_v012_table_persistence.py
           grep -q 'RAMI_V011: discard_pile_action=true card_combo_select=true strict_band_slots=true table_melds_xl=true' GameTable.gd
+          grep -q 'RAMI_V012: table_xxl=true persistent_meld_render=true app_icon=true' GameTable.gd
           ! grep -q 'DÉFAUSSER\\nFin du tour' GameTable.gd
+          grep -q 'config/icon="res://assets/app_icon.svg"' project.godot
+          grep -q 'launcher_icons/main_192x192="res://assets/app_icon.svg"' export_presets.cfg
 
       - name: Fetch public domain playing cards
         run: |
@@ -98,11 +102,20 @@ jobs:
           grep -q 'RAMI_RUNTIME: ready_start' /tmp/rami-input.log
           grep -q 'RAMI_RUNTIME: dealt player=13 ai1=13 ai2=13 stock=68 discard=1' /tmp/rami-input.log
           grep -q 'RAMI_RUNTIME: refresh_ok' /tmp/rami-input.log
-          grep -q 'RAMI_V011: discard_pile_action=true card_combo_select=true strict_band_slots=true table_melds_xl=true' /tmp/rami-input.log
+          grep -q 'RAMI_V012: table_xxl=true persistent_meld_render=true app_icon=true' /tmp/rami-input.log
           grep -q 'RAMI_INPUT_TEST: PASS stock_touch_route' /tmp/rami-input.log
           ! grep -q 'SCRIPT ERROR' /tmp/rami-input.log
           ! grep -q 'Parse Error' /tmp/rami-input.log
           ! grep -q 'Failed to load script' /tmp/rami-input.log
+
+      - name: Common table persistence test
+        run: |
+          set -euo pipefail
+          GODOT=/home/runner/.local/share/godot/godot_executable/Godot_v4.7.2-stable_linux.x86_64
+          "$GODOT" --headless --resolution 2400x1080 --path "$GITHUB_WORKSPACE" -s res://tests/TestTablePersistence.gd 2>&1 | tee /tmp/rami-table.log
+          grep -q 'RAMI_TABLE_TEST: PASS melds=10' /tmp/rami-table.log
+          ! grep -q 'SCRIPT ERROR' /tmp/rami-table.log
+          ! grep -q 'Parse Error' /tmp/rami-table.log
 
       - name: Responsive runtime smoke tests
         run: |
@@ -115,7 +128,7 @@ jobs:
             grep -q 'RAMI_RUNTIME: ready_start' "$LOG"
             grep -q 'RAMI_RUNTIME: dealt player=13 ai1=13 ai2=13 stock=68 discard=1' "$LOG"
             grep -q 'RAMI_RUNTIME: refresh_ok' "$LOG"
-            grep -q 'RAMI_V011: discard_pile_action=true card_combo_select=true strict_band_slots=true table_melds_xl=true' "$LOG"
+            grep -q 'RAMI_V012: table_xxl=true persistent_meld_render=true app_icon=true' "$LOG"
             ! grep -q 'SCRIPT ERROR' "$LOG"
             ! grep -q 'Parse Error' "$LOG"
             ! grep -q 'Failed to load script' "$LOG"
@@ -126,13 +139,13 @@ jobs:
           set -eux
           APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.11b.apk"
-          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.11b.apk"
-          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.11b.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.12.apk"
+          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.12.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.12.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rami_v0.0.11b_APK
-          path: Rami_v0.0.11b.apk
+          name: Rami_v0.0.12_APK
+          path: Rami_v0.0.12.apk
           if-no-files-found: error
