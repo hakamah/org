@@ -1,0 +1,26 @@
+name: Debug v0.0.11 patched GameTable
+
+on:
+  push:
+    branches:
+      - rami-apk-v0.0.11-discard-table
+
+permissions:
+  contents: read
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Apply patches
+        run: |
+          python3 tools/patch_v009_clean_ui.py
+          python3 tools/patch_v010_combo_table.py
+          python3 tools/patch_v011_discard_table.py
+          nl -ba GameTable.gd | sed -n '360,410p'
+      - name: Upload transformed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: v011-patched-GameTable
+          path: GameTable.gd
