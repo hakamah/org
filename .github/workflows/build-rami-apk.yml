@@ -1,9 +1,9 @@
-name: Build Rami APK v0.0.10 Combo Table
+name: Build Rami APK v0.0.11 Discard Table
 
 on:
   push:
     branches:
-      - rami-apk-v0.0.10-combo-table
+      - rami-apk-v0.0.11-discard-table
   workflow_dispatch:
 
 permissions:
@@ -22,8 +22,11 @@ jobs:
           set -eux
           python3 tools/patch_v009_clean_ui.py
           python3 tools/patch_v010_combo_table.py
+          python3 tools/patch_v011_discard_table.py
           grep -q 'RAMI_CLEAN_UI: opponent_counters=true combo_chips=false clean_bands=true' GameTable.gd
           grep -q 'RAMI_V010: contiguous_combo_hints=true full_table_touch=true' GameTable.gd
+          grep -q 'RAMI_V011: discard_pile_action=true card_combo_select=true strict_band_slots=true table_melds_xl=true' GameTable.gd
+          ! grep -q 'DÉFAUSSER\\nFin du tour' GameTable.gd
 
       - name: Fetch public domain playing cards
         run: |
@@ -106,6 +109,7 @@ jobs:
           grep -q 'RAMI_MOBILE_HAND:' /tmp/rami-input.log
           grep -q 'RAMI_CLEAN_UI: opponent_counters=true combo_chips=false clean_bands=true' /tmp/rami-input.log
           grep -q 'RAMI_V010: contiguous_combo_hints=true full_table_touch=true' /tmp/rami-input.log
+          grep -q 'RAMI_V011: discard_pile_action=true card_combo_select=true strict_band_slots=true table_melds_xl=true' /tmp/rami-input.log
           grep -q 'RAMI_INPUT_TEST: PASS stock_touch_route hand=14 stock=67 manual_reorder=true' /tmp/rami-input.log
           ! grep -q 'SCRIPT ERROR' /tmp/rami-input.log
           ! grep -q 'Parse Error' /tmp/rami-input.log
@@ -123,6 +127,7 @@ jobs:
             grep -q 'RAMI_INPUT: visual_overlays_ignore=true' "$LOG"
             grep -q 'RAMI_CLEAN_UI: opponent_counters=true combo_chips=false clean_bands=true' "$LOG"
             grep -q 'RAMI_V010: contiguous_combo_hints=true full_table_touch=true' "$LOG"
+            grep -q 'RAMI_V011: discard_pile_action=true card_combo_select=true strict_band_slots=true table_melds_xl=true' "$LOG"
             grep -q 'RAMI_LAYOUT:' "$LOG"
             ! grep -q 'SCRIPT ERROR' "$LOG"
             ! grep -q 'Parse Error' "$LOG"
@@ -133,13 +138,13 @@ jobs:
           set -eux
           APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.10.apk"
-          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.10.apk"
-          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.10.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.11.apk"
+          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.11.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.11.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rami_v0.0.10_APK
-          path: Rami_v0.0.10.apk
+          name: Rami_v0.0.11_APK
+          path: Rami_v0.0.11.apk
           if-no-files-found: error
