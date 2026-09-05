@@ -1,9 +1,9 @@
-name: Build Rami APK v0.0.9 Clean Mobile UI
+name: Build Rami APK v0.0.10 Combo Table
 
 on:
   push:
     branches:
-      - rami-apk-v0.0.9-clean-mobile-ui
+      - rami-apk-v0.0.10-combo-table
   workflow_dispatch:
 
 permissions:
@@ -17,11 +17,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Apply clean mobile UI patch
+      - name: Apply mobile UI patches
         run: |
           set -eux
           python3 tools/patch_v009_clean_ui.py
+          python3 tools/patch_v010_combo_table.py
           grep -q 'RAMI_CLEAN_UI: opponent_counters=true combo_chips=false clean_bands=true' GameTable.gd
+          grep -q 'RAMI_V010: contiguous_combo_hints=true full_table_touch=true' GameTable.gd
 
       - name: Fetch public domain playing cards
         run: |
@@ -103,6 +105,7 @@ jobs:
           grep -q 'RAMI_INPUT: visual_overlays_ignore=true' /tmp/rami-input.log
           grep -q 'RAMI_MOBILE_HAND:' /tmp/rami-input.log
           grep -q 'RAMI_CLEAN_UI: opponent_counters=true combo_chips=false clean_bands=true' /tmp/rami-input.log
+          grep -q 'RAMI_V010: contiguous_combo_hints=true full_table_touch=true' /tmp/rami-input.log
           grep -q 'RAMI_INPUT_TEST: PASS stock_touch_route hand=14 stock=67 manual_reorder=true' /tmp/rami-input.log
           ! grep -q 'SCRIPT ERROR' /tmp/rami-input.log
           ! grep -q 'Parse Error' /tmp/rami-input.log
@@ -119,6 +122,7 @@ jobs:
             grep -q 'RAMI_RUNTIME: refresh_ok player_nodes=13 ai1_nodes=2 ai2_nodes=2' "$LOG"
             grep -q 'RAMI_INPUT: visual_overlays_ignore=true' "$LOG"
             grep -q 'RAMI_CLEAN_UI: opponent_counters=true combo_chips=false clean_bands=true' "$LOG"
+            grep -q 'RAMI_V010: contiguous_combo_hints=true full_table_touch=true' "$LOG"
             grep -q 'RAMI_LAYOUT:' "$LOG"
             ! grep -q 'SCRIPT ERROR' "$LOG"
             ! grep -q 'Parse Error' "$LOG"
@@ -129,13 +133,13 @@ jobs:
           set -eux
           APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.9.apk"
-          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.9.apk"
-          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.9.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.10.apk"
+          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.10.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.10.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rami_v0.0.9_APK
-          path: Rami_v0.0.9.apk
+          name: Rami_v0.0.10_APK
+          path: Rami_v0.0.10.apk
           if-no-files-found: error
