@@ -83,7 +83,7 @@ func _build_menu() -> void:
 	center.add_child(play)
 
 	var version := Label.new()
-	version.text = "Partie jouable • v0.0.4"
+	version.text = "3 joueurs • Roadmap jouable • v0.0.5"
 	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	version.add_theme_font_size_override("font_size", 20)
 	version.add_theme_color_override("font_color", Color(0.85, 0.85, 0.80, 0.85))
