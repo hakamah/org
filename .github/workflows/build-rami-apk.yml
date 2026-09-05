@@ -1,9 +1,9 @@
-name: Build Rami APK v0.0.7 Responsive
+name: Build Rami APK v0.0.7b Touch Fix
 
 on:
   push:
     branches:
-      - rami-apk-v0.0.7-responsive
+      - rami-apk-v0.0.7b-touchfix
   workflow_dispatch:
 
 permissions:
@@ -44,6 +44,7 @@ jobs:
           shutil.copy2(root / 'card fronts' / 'jokers' / 'red joker.png', dst / 'joker_red.png')
           shutil.copy2(root / 'card backs' / 'card back red.png', dst / 'back_red.png')
           assert len(list(dst.glob('*.png'))) == 55
+          print('Prepared 55 card textures')
           PY
 
       - name: Java 17
@@ -81,11 +82,20 @@ jobs:
 
       - name: Engine rules tests
         run: |
-          set -o pipefail
+          set -euo pipefail
           GODOT=/home/runner/.local/share/godot/godot_executable/Godot_v4.7.2-stable_linux.x86_64
           "$GODOT" --headless --path "$GITHUB_WORKSPACE" res://tests/TestRunner.tscn 2>&1 | tee /tmp/rami-tests.log
           grep -q 'RAMI_TESTS: PASS' /tmp/rami-tests.log
           ! grep -q 'SCRIPT ERROR' /tmp/rami-tests.log
+
+      - name: Touch input regression test
+        run: |
+          set -euo pipefail
+          GODOT=/home/runner/.local/share/godot/godot_executable/Godot_v4.7.2-stable_linux.x86_64
+          "$GODOT" --headless --resolution 2400x1080 --path "$GITHUB_WORKSPACE" -s res://tests/TestInputRouting.gd 2>&1 | tee /tmp/rami-input.log
+          grep -q 'RAMI_INPUT: visual_overlays_ignore=true' /tmp/rami-input.log
+          grep -q 'RAMI_INPUT_TEST: PASS stock_touch_route hand=14 stock=67' /tmp/rami-input.log
+          ! grep -q 'SCRIPT ERROR' /tmp/rami-input.log
 
       - name: Responsive runtime smoke tests
         run: |
@@ -94,10 +104,10 @@ jobs:
           for RES in 1600x900 1920x1080 2400x1080 1280x800; do
             W=${RES%x*}; H=${RES#*x}
             LOG="/tmp/rami-${RES}.log"
-            echo "Testing ${RES}"
             timeout 8s "$GODOT" --headless --resolution ${W}x${H} --path "$GITHUB_WORKSPACE" res://GameTable.tscn --quit-after 2 2>&1 | tee "$LOG"
             grep -q 'RAMI_RUNTIME: dealt player=13 ai1=13 ai2=13 stock=68 discard=1' "$LOG"
             grep -q 'RAMI_RUNTIME: refresh_ok player_nodes=13 ai1_nodes=13 ai2_nodes=13' "$LOG"
+            grep -q 'RAMI_INPUT: visual_overlays_ignore=true' "$LOG"
             grep -q 'RAMI_LAYOUT:' "$LOG"
             ! grep -q 'SCRIPT ERROR' "$LOG"
           done
@@ -107,12 +117,13 @@ jobs:
           set -eux
           APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.7.apk"
-          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.7.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.7b.apk"
+          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.7b.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.7b.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rami_v0.0.7_APK
-          path: Rami_v0.0.7.apk
+          name: Rami_v0.0.7b_APK
+          path: Rami_v0.0.7b.apk
           if-no-files-found: error
