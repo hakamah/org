@@ -1,4 +1,4 @@
-name: Build Rami APK v0.0.5b
+name: Build Rami APK v0.0.5c
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Patch card visibility and runtime diagnostics
+      - name: Patch runtime fixes and diagnostics
         run: |
           python3 <<'PY'
           from pathlib import Path
@@ -30,13 +30,18 @@ jobs:
           assert old_ready in text, 'ready block not found'
           text = text.replace(old_ready, new_ready, 1)
 
+          old_refresh = '''func _refresh_all() -> void:\n\tdetected_combos = game.detect_player_melds() if game.phase == "action" and game.turn_index == 0 else []'''
+          new_refresh = '''func _refresh_all() -> void:\n\tdetected_combos.clear()\n\tif game.phase == "action" and game.turn_index == 0:\n\t\tdetected_combos = game.detect_player_melds()'''
+          assert old_refresh in text, 'refresh typed-array block not found'
+          text = text.replace(old_refresh, new_refresh, 1)
+
           old_tex = '''\tbutton.texture_normal = _load_card_texture(card_id)\n\tbutton.disabled = not clickable'''
           new_tex = '''\tbutton.texture_normal = _load_card_texture(card_id)\n\tbutton.texture_disabled = button.texture_normal\n\tbutton.disabled = not clickable'''
           assert old_tex in text, 'card TextureButton block not found'
           text = text.replace(old_tex, new_tex, 1)
 
           path.write_text(text, encoding='utf-8')
-          print('Patched GameTable.gd for diagnostics')
+          print('Patched typed array crash + card visibility + runtime diagnostics')
           PY
 
       - name: Fetch public domain playing cards
@@ -118,6 +123,7 @@ jobs:
           timeout 8s "$GODOT" --headless --path "$GITHUB_WORKSPACE" res://GameTable.tscn --quit-after 2 2>&1 | tee /tmp/rami-smoke.log
           grep -q 'RAMI_RUNTIME: dealt player=13 ai1=13 ai2=13' /tmp/rami-smoke.log
           grep -q 'RAMI_RUNTIME: refresh_ok' /tmp/rami-smoke.log
+          grep -Eq 'RAMI_RUNTIME: refresh_ok player_nodes=13 ai1_nodes=13 ai2_nodes=13' /tmp/rami-smoke.log
           if grep -q 'SCRIPT ERROR' /tmp/rami-smoke.log; then
             echo 'Runtime script error detected'
             exit 1
@@ -128,12 +134,12 @@ jobs:
           set -eux
           APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.5b.apk"
-          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.5b.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.5c.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.5c.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rami_v0.0.5b_APK
-          path: Rami_v0.0.5b.apk
+          name: Rami_v0.0.5c_APK
+          path: Rami_v0.0.5c.apk
           if-no-files-found: error
