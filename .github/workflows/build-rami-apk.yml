@@ -17,18 +17,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Fix dealt card visibility
+      - name: Patch card visibility and runtime diagnostics
         run: |
           python3 <<'PY'
           from pathlib import Path
 
           path = Path('GameTable.gd')
           text = path.read_text(encoding='utf-8')
-          old = '''\tbutton.texture_normal = _load_card_texture(card_id)\n\tbutton.disabled = not clickable'''
-          new = '''\tbutton.texture_normal = _load_card_texture(card_id)\n\tbutton.texture_disabled = button.texture_normal\n\tbutton.disabled = not clickable'''
-          assert old in text, 'card TextureButton block not found'
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          print('Patched GameTable.gd: disabled cards now keep their texture visible')
+
+          old_ready = '''func _ready() -> void:\n\t_build_ui()\n\tgame.new_round()\n\t_refresh_all()\n\t_play_deal_animation()'''
+          new_ready = '''func _ready() -> void:\n\tprint("RAMI_RUNTIME: ready_start")\n\t_build_ui()\n\tprint("RAMI_RUNTIME: ui_built")\n\tgame.new_round()\n\tprint("RAMI_RUNTIME: dealt player=", game.player_hand.size(), " ai1=", game.ai1_hand.size(), " ai2=", game.ai2_hand.size(), " stock=", game.stock.size(), " discard=", game.discard_pile.size())\n\t_refresh_all()\n\tprint("RAMI_RUNTIME: refresh_ok player_nodes=", player_layer.get_child_count(), " ai1_nodes=", ai1_layer.get_child_count(), " ai2_nodes=", ai2_layer.get_child_count())\n\t_play_deal_animation()'''
+          assert old_ready in text, 'ready block not found'
+          text = text.replace(old_ready, new_ready, 1)
+
+          old_tex = '''\tbutton.texture_normal = _load_card_texture(card_id)\n\tbutton.disabled = not clickable'''
+          new_tex = '''\tbutton.texture_normal = _load_card_texture(card_id)\n\tbutton.texture_disabled = button.texture_normal\n\tbutton.disabled = not clickable'''
+          assert old_tex in text, 'card TextureButton block not found'
+          text = text.replace(old_tex, new_tex, 1)
+
+          path.write_text(text, encoding='utf-8')
+          print('Patched GameTable.gd for diagnostics')
           PY
 
       - name: Fetch public domain playing cards
@@ -101,6 +109,19 @@ jobs:
           export_debug: true
           archive_output: false
           verbose: true
+
+      - name: Runtime smoke test GameTable
+        run: |
+          set -o pipefail
+          GODOT=/home/runner/.local/share/godot/godot_executable/Godot_v4.7.2-stable_linux.x86_64
+          test -x "$GODOT"
+          timeout 8s "$GODOT" --headless --path "$GITHUB_WORKSPACE" res://GameTable.tscn --quit-after 2 2>&1 | tee /tmp/rami-smoke.log
+          grep -q 'RAMI_RUNTIME: dealt player=13 ai1=13 ai2=13' /tmp/rami-smoke.log
+          grep -q 'RAMI_RUNTIME: refresh_ok' /tmp/rami-smoke.log
+          if grep -q 'SCRIPT ERROR' /tmp/rami-smoke.log; then
+            echo 'Runtime script error detected'
+            exit 1
+          fi
 
       - name: Collect APK
         run: |
