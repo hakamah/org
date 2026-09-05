@@ -11,10 +11,24 @@ var _last_signature: String = ""
 func _ready() -> void:
 	resized.connect(_queue_layout)
 	get_viewport().size_changed.connect(_queue_layout)
+	call_deferred("_fix_input_routing")
 	call_deferred("_apply_layout")
 
 func _queue_layout() -> void:
 	call_deferred("_apply_layout")
+
+func _fix_input_routing() -> void:
+	if not is_instance_valid(design_surface):
+		return
+	# GameTable crée plusieurs Control plein écran uniquement pour dessiner les mains.
+	# Leur MouseFilter par défaut (STOP) interceptait les taps avant la pioche.
+	for property_name: String in ["player_layer", "ai1_layer", "ai2_layer"]:
+		var layer: Variant = design_surface.get(property_name)
+		if layer is Control:
+			(layer as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# La surface responsive laisse passer les événements vers ses vrais boutons enfants.
+	design_surface.mouse_filter = Control.MOUSE_FILTER_PASS
+	print("RAMI_INPUT: visual_overlays_ignore=true")
 
 func _apply_layout() -> void:
 	if not is_instance_valid(design_surface):
