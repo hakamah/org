@@ -1,9 +1,9 @@
-name: Build Rami APK v0.0.5
+name: Build Rami APK v0.0.5b
 
 on:
   push:
     branches:
-      - rami-apk-v0.0.5
+      - rami-apk-v0.0.5b
   workflow_dispatch:
 
 permissions:
@@ -16,6 +16,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Fix dealt card visibility
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('GameTable.gd')
+          text = path.read_text(encoding='utf-8')
+          old = '''\tbutton.texture_normal = _load_card_texture(card_id)\n\tbutton.disabled = not clickable'''
+          new = '''\tbutton.texture_normal = _load_card_texture(card_id)\n\tbutton.texture_disabled = button.texture_normal\n\tbutton.disabled = not clickable'''
+          assert old in text, 'card TextureButton block not found'
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          print('Patched GameTable.gd: disabled cards now keep their texture visible')
+          PY
 
       - name: Fetch public domain playing cards
         run: |
@@ -93,12 +107,12 @@ jobs:
           set -eux
           APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.5.apk"
-          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.5.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.5b.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.5b.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rami_v0.0.5_APK
-          path: Rami_v0.0.5.apk
+          name: Rami_v0.0.5b_APK
+          path: Rami_v0.0.5b.apk
           if-no-files-found: error
