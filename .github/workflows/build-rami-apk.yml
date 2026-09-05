@@ -1,9 +1,9 @@
-name: Build Rami APK v0.0.2
+name: Build Rami APK v0.0.3
 
 on:
   push:
     branches:
-      - rami-apk-v0.0.2
+      - rami-apk-v0.0.3
   workflow_dispatch:
 
 permissions:
@@ -16,6 +16,42 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Fetch public domain playing cards
+        run: |
+          set -eux
+          rm -rf assets/cards /tmp/rami-deck /tmp/rami-deck.zip
+          mkdir -p assets/cards
+          curl -L --fail --retry 3 \
+            https://github.com/AustinGabriel/The-Public-Domain-Deck-Public-Domain-and-CC0-Playing-Cards/archive/refs/heads/main.zip \
+            -o /tmp/rami-deck.zip
+          unzip -q /tmp/rami-deck.zip -d /tmp/rami-deck
+          python3 <<'PY'
+          from pathlib import Path
+          import shutil
+
+          roots = list(Path('/tmp/rami-deck').glob('*/png cards'))
+          assert roots, 'card png folder not found'
+          root = roots[0]
+          dst = Path('assets/cards')
+          suits = ['spades', 'hearts', 'diamonds', 'clubs']
+          ranks = [
+              ('A', 'ace'), ('2', '2'), ('3', '3'), ('4', '4'), ('5', '5'),
+              ('6', '6'), ('7', '7'), ('8', '8'), ('9', '9'), ('10', '10'),
+              ('J', 'jack'), ('Q', 'queen'), ('K', 'king')
+          ]
+          for suit in suits:
+              for out_rank, file_rank in ranks:
+                  src = root / 'card fronts' / suit / f'{file_rank} of {suit}.png'
+                  assert src.exists(), src
+                  shutil.copy2(src, dst / f'{suit}_{out_rank}.png')
+          shutil.copy2(root / 'card fronts' / 'jokers' / 'black joker.png', dst / 'joker_black.png')
+          shutil.copy2(root / 'card fronts' / 'jokers' / 'red joker.png', dst / 'joker_red.png')
+          shutil.copy2(root / 'card backs' / 'card back red.png', dst / 'back_red.png')
+          files = list(dst.glob('*.png'))
+          assert len(files) == 55, len(files)
+          print('Prepared', len(files), 'card textures')
+          PY
 
       - name: Java 17
         uses: actions/setup-java@v4
@@ -57,12 +93,12 @@ jobs:
           set -eux
           APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.2.apk"
-          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.2.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.3.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.3.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rami_v0.0.2_APK
-          path: Rami_v0.0.2.apk
+          name: Rami_v0.0.3_APK
+          path: Rami_v0.0.3.apk
           if-no-files-found: error
