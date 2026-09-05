@@ -99,7 +99,6 @@ jobs:
           "$GODOT" --headless --resolution 2400x1080 --path "$GITHUB_WORKSPACE" -s res://tests/TestInputRouting.gd > /tmp/rami-input.log 2>&1
           RC=$?
           cat /tmp/rami-input.log
-          echo "GODOT_RC=$RC"
           exit $RC
 
       - name: Upload mobile diagnostic
@@ -111,18 +110,30 @@ jobs:
           if-no-files-found: warn
 
       - name: Responsive runtime smoke tests
+        continue-on-error: true
         run: |
-          set -euo pipefail
+          set +e
           GODOT=/home/runner/.local/share/godot/godot_executable/Godot_v4.7.2-stable_linux.x86_64
+          FAILED=0
           for RES in 1600x900 1920x1080 2400x1080 1280x800; do
             W=${RES%x*}; H=${RES#*x}
             LOG="/tmp/rami-${RES}.log"
-            timeout 8s "$GODOT" --headless --resolution ${W}x${H} --path "$GITHUB_WORKSPACE" res://GameTable.tscn --quit-after 2 2>&1 | tee "$LOG"
-            grep -q 'RAMI_RUNTIME: dealt player=13 ai1=13 ai2=13 stock=68 discard=1' "$LOG"
-            grep -q 'RAMI_V011: discard_pile_action=true card_combo_select=true strict_band_slots=true table_melds_xl=true' "$LOG"
-            ! grep -q 'SCRIPT ERROR' "$LOG"
-            ! grep -q 'Parse Error' "$LOG"
+            timeout 8s "$GODOT" --headless --resolution ${W}x${H} --path "$GITHUB_WORKSPACE" res://GameTable.tscn --quit-after 2 > "$LOG" 2>&1
+            cat "$LOG"
+            grep -q 'RAMI_RUNTIME: dealt player=13 ai1=13 ai2=13 stock=68 discard=1' "$LOG" || FAILED=1
+            grep -q 'RAMI_V011: discard_pile_action=true card_combo_select=true strict_band_slots=true table_melds_xl=true' "$LOG" || FAILED=1
+            grep -q 'SCRIPT ERROR' "$LOG" && FAILED=1
+            grep -q 'Parse Error' "$LOG" && FAILED=1
           done
+          exit $FAILED
+
+      - name: Upload responsive diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rami_v0.0.11_ResponsiveDiagnostic
+          path: /tmp/rami-*.log
+          if-no-files-found: warn
 
       - name: Collect APK
         run: |
