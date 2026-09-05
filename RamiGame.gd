@@ -5,26 +5,49 @@ const SUITS: Array[String] = ["spades", "hearts", "diamonds", "clubs"]
 const RANKS: Array[String] = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 const PLAYER_NAMES: Array[String] = ["Vous", "IA 1", "IA 2"]
 
-var stock: Array[String] = []
-var discard_pile: Array[String] = []
-var player_hand: Array[String] = []
-var ai1_hand: Array[String] = []
-var ai2_hand: Array[String] = []
+enum Phase {
+	DEAL,
+	DRAW,
+	ACTION,
+	AI,
+	GAME_OVER,
+}
+
+enum OpeningRule {
+	SIMPLE_MELD,
+	RAMI_51,
+}
+
+var stock: Array[CardInstance] = []
+var discard_pile: Array[CardInstance] = []
+var player_hand: Array[CardInstance] = []
+var ai1_hand: Array[CardInstance] = []
+var ai2_hand: Array[CardInstance] = []
 var table_melds: Array[Dictionary] = []
 
 var player_opened: bool = false
 var ai1_opened: bool = false
 var ai2_opened: bool = false
 var turn_index: int = 0
-var phase: String = "draw"
+var phase: Phase = Phase.DEAL
 var winner_index: int = -1
 var last_message: String = ""
 var ranking: Array[Dictionary] = []
 
 var sort_mode: int = -1
-var must_replay_jokers: Array[String] = []
+var opening_rule: OpeningRule = OpeningRule.SIMPLE_MELD
+var must_replay_jokers: Array[CardInstance] = []
+
+func set_opening_rule(rule: OpeningRule) -> void:
+	opening_rule = rule
+
+func opening_rule_name() -> String:
+	if opening_rule == OpeningRule.RAMI_51:
+		return "Rami 51"
+	return "Ouverture simple"
 
 func new_round() -> void:
+	phase = Phase.DEAL
 	stock.clear()
 	discard_pile.clear()
 	player_hand.clear()
@@ -37,27 +60,33 @@ func new_round() -> void:
 	ai1_opened = false
 	ai2_opened = false
 	turn_index = 0
-	phase = "draw"
 	winner_index = -1
 	sort_mode = -1
-	last_message = "À vous : piochez une carte."
+	last_message = "Distribution en cours..."
 
-	var deck: Array[String] = []
-	for _copy_index: int in range(2):
+	var deck: Array[CardInstance] = []
+	var uid: int = 1
+	for deck_index: int in range(2):
 		for suit: String in SUITS:
 			for rank: String in RANKS:
-				deck.append("%s_%s" % [suit, rank])
-		deck.append("joker_black")
-		deck.append("joker_red")
-	deck.shuffle()
+				deck.append(CardInstance.new(uid, deck_index, suit, rank, ""))
+				uid += 1
+		deck.append(CardInstance.new(uid, deck_index, "", "", "black"))
+		uid += 1
+		deck.append(CardInstance.new(uid, deck_index, "", "", "red"))
+		uid += 1
 
+	deck.shuffle()
 	for _deal_index: int in range(13):
 		player_hand.append(deck.pop_back())
 		ai1_hand.append(deck.pop_back())
 		ai2_hand.append(deck.pop_back())
 
 	discard_pile.append(deck.pop_back())
-	stock = deck
+	for card: CardInstance in deck:
+		stock.append(card)
+	phase = Phase.DRAW
+	last_message = "À vous : piochez une carte ou prenez la défausse."
 
 func draw_stock() -> bool:
 	if not _human_can_draw():
@@ -67,24 +96,24 @@ func draw_stock() -> bool:
 		last_message = "La pioche est vide."
 		return false
 	player_hand.append(stock.pop_back())
-	phase = "action"
-	last_message = "Posez vos combinaisons puis défaussez une carte."
+	phase = Phase.ACTION
+	last_message = "Posez si vous le souhaitez, puis défaussez exactement une carte."
 	return true
 
 func draw_discard() -> bool:
 	if not _human_can_draw() or discard_pile.is_empty():
 		return false
 	player_hand.append(discard_pile.pop_back())
-	phase = "action"
-	last_message = "Carte récupérée. Posez puis défaussez une carte."
+	phase = Phase.ACTION
+	last_message = "Défausse récupérée. Posez si vous le souhaitez, puis défaussez."
 	return true
 
 func _human_can_draw() -> bool:
-	return winner_index < 0 and turn_index == 0 and phase == "draw"
+	return winner_index < 0 and turn_index == 0 and phase == Phase.DRAW
 
-func top_discard() -> String:
+func top_discard() -> CardInstance:
 	if discard_pile.is_empty():
-		return ""
+		return null
 	return discard_pile.back()
 
 func toggle_sort_player_hand() -> int:
@@ -104,12 +133,12 @@ func current_sort_name() -> String:
 	return ""
 
 func play_player_selection(indices: Array[int]) -> Dictionary:
-	if winner_index >= 0 or turn_index != 0 or phase != "action":
+	if winner_index >= 0 or turn_index != 0 or phase != Phase.ACTION:
 		return {"ok": false, "message": "Vous devez d'abord piocher."}
 	var check: Dictionary = _selection_cards(player_hand, indices)
 	if not bool(check.get("ok", false)):
 		return check
-	var cards: Array[String] = _dictionary_cards(check)
+	var cards: Array[CardInstance] = _dictionary_cards(check)
 	if cards.size() < 3:
 		return {"ok": false, "message": "Une combinaison contient au moins 3 cartes."}
 	var info: Dictionary = validate_meld(cards)
@@ -117,6 +146,8 @@ func play_player_selection(indices: Array[int]) -> Dictionary:
 		return {"ok": false, "message": "Ces cartes ne forment pas une combinaison valide."}
 	if player_hand.size() - indices.size() <= 0:
 		return {"ok": false, "message": "Gardez une dernière carte pour la défausse finale."}
+	if not player_opened and not _opening_is_valid(cards, info):
+		return {"ok": false, "message": _opening_error_message()}
 
 	_remove_indices(player_hand, indices)
 	_consume_required_jokers(cards)
@@ -127,13 +158,13 @@ func play_player_selection(indices: Array[int]) -> Dictionary:
 	})
 	if not player_opened:
 		player_opened = true
-		last_message = "Vous êtes ouvert ! Vous devez finir par une défausse."
+		last_message = "Vous êtes ouvert ! Terminez votre tour par une défausse."
 	else:
-		last_message = "Combinaison posée. Défaussez pour terminer le tour."
+		last_message = "Combinaison posée. Terminez votre tour par une défausse."
 	return {"ok": true, "message": last_message}
 
 func play_player_on_meld(indices: Array[int], meld_index: int) -> Dictionary:
-	if winner_index >= 0 or turn_index != 0 or phase != "action":
+	if winner_index >= 0 or turn_index != 0 or phase != Phase.ACTION:
 		return {"ok": false, "message": "Vous devez d'abord piocher."}
 	if not player_opened:
 		return {"ok": false, "message": "Posez d'abord votre propre combinaison pour vous ouvrir."}
@@ -142,27 +173,27 @@ func play_player_on_meld(indices: Array[int], meld_index: int) -> Dictionary:
 	var check: Dictionary = _selection_cards(player_hand, indices)
 	if not bool(check.get("ok", false)):
 		return check
-	var selected: Array[String] = _dictionary_cards(check)
+	var selected: Array[CardInstance] = _dictionary_cards(check)
 	if selected.is_empty():
 		return {"ok": false, "message": "Sélectionnez au moins une carte."}
 	if player_hand.size() - indices.size() <= 0:
 		return {"ok": false, "message": "Gardez une dernière carte pour la défausse finale."}
 
 	var meld: Dictionary = table_melds[meld_index]
-	var existing: Array[String] = _dictionary_cards(meld)
+	var existing: Array[CardInstance] = _dictionary_cards(meld)
 	var simulation: Dictionary = _simulate_add_to_meld(existing, selected, true)
 	if not bool(simulation.get("ok", false)):
 		return {"ok": false, "message": "Ces cartes ne peuvent pas compléter cette combinaison."}
 
 	_remove_indices(player_hand, indices)
 	_consume_required_jokers(selected)
-	var new_cards: Array[String] = _dictionary_cards(simulation)
+	var new_cards: Array[CardInstance] = _dictionary_cards(simulation)
 	table_melds[meld_index]["cards"] = new_cards
 	var new_info: Dictionary = validate_meld(new_cards)
 	table_melds[meld_index]["kind"] = String(new_info.get("kind", ""))
 
-	var recovered: Array[String] = _dictionary_string_array(simulation, "recovered")
-	for joker: String in recovered:
+	var recovered: Array[CardInstance] = _dictionary_card_array(simulation, "recovered")
+	for joker: CardInstance in recovered:
 		player_hand.append(joker)
 		must_replay_jokers.append(joker)
 	if recovered.is_empty():
@@ -172,21 +203,21 @@ func play_player_on_meld(indices: Array[int], meld_index: int) -> Dictionary:
 	return {"ok": true, "message": last_message, "recovered": recovered.size()}
 
 func discard_player(index: int) -> Dictionary:
-	if winner_index >= 0 or turn_index != 0 or phase != "action":
+	if winner_index >= 0 or turn_index != 0 or phase != Phase.ACTION:
 		return {"ok": false, "message": "Vous ne pouvez pas défausser maintenant."}
 	if not must_replay_jokers.is_empty():
 		return {"ok": false, "message": "Vous devez d'abord rejouer le Joker récupéré."}
 	if index < 0 or index >= player_hand.size():
 		return {"ok": false, "message": "Sélectionnez exactement une carte à défausser."}
 
-	var discarded: String = player_hand[index]
+	var discarded: CardInstance = player_hand[index]
 	player_hand.remove_at(index)
 	discard_pile.append(discarded)
 	if player_hand.is_empty():
 		_finish_game(0)
 		return {"ok": true, "game_over": true}
 
-	phase = "ai"
+	phase = Phase.AI
 	turn_index = 1
 	_run_ai_turn(1)
 	if winner_index < 0:
@@ -194,17 +225,17 @@ func discard_player(index: int) -> Dictionary:
 		_run_ai_turn(2)
 	if winner_index < 0:
 		turn_index = 0
-		phase = "draw"
-		last_message = "À vous : piochez une carte ou prenez la défausse."
+		phase = Phase.DRAW
+		last_message = "À vous : piochez une carte ou prenez la dernière défausse."
 	return {"ok": true, "game_over": winner_index >= 0}
 
-func validate_meld(cards: Array[String]) -> Dictionary:
+func validate_meld(cards: Array[CardInstance]) -> Dictionary:
 	if cards.size() < 3:
 		return {"valid": false}
 	var jokers: int = 0
-	var natural: Array[String] = []
-	for card: String in cards:
-		if is_joker(card):
+	var natural: Array[CardInstance] = []
+	for card: CardInstance in cards:
+		if card.is_joker():
 			jokers += 1
 		else:
 			natural.append(card)
@@ -216,18 +247,17 @@ func validate_meld(cards: Array[String]) -> Dictionary:
 		return set_info
 	return _validate_run(natural, jokers, cards.size())
 
-func _validate_set(natural: Array[String], _jokers: int, total: int) -> Dictionary:
+func _validate_set(natural: Array[CardInstance], _jokers: int, total: int) -> Dictionary:
 	if total < 3 or total > 4:
 		return {"valid": false}
-	var rank: String = card_rank(natural[0])
+	var rank: String = natural[0].rank
 	var used_suits: Array[String] = []
-	for card: String in natural:
-		if card_rank(card) != rank:
+	for card: CardInstance in natural:
+		if card.rank != rank:
 			return {"valid": false}
-		var suit: String = card_suit(card)
-		if used_suits.has(suit):
+		if used_suits.has(card.suit):
 			return {"valid": false}
-		used_suits.append(suit)
+		used_suits.append(card.suit)
 	return {
 		"valid": true,
 		"kind": "set",
@@ -236,15 +266,15 @@ func _validate_set(natural: Array[String], _jokers: int, total: int) -> Dictiona
 		"family": "set_%s" % rank
 	}
 
-func _validate_run(natural: Array[String], jokers: int, total: int) -> Dictionary:
+func _validate_run(natural: Array[CardInstance], jokers: int, total: int) -> Dictionary:
 	if total > 13:
 		return {"valid": false}
-	var suit: String = card_suit(natural[0])
+	var suit: String = natural[0].suit
 	var values: Array[int] = []
-	for card: String in natural:
-		if card_suit(card) != suit:
+	for card: CardInstance in natural:
+		if card.suit != suit:
 			return {"valid": false}
-		var value: int = rank_value(card_rank(card))
+		var value: int = rank_value(card.rank)
 		if values.has(value):
 			return {"valid": false}
 		values.append(value)
@@ -293,10 +323,56 @@ func _sequence_points(value: int) -> int:
 		return 11
 	return mini(value, 10)
 
+func _opening_is_valid(cards: Array[CardInstance], info: Dictionary) -> bool:
+	if opening_rule == OpeningRule.SIMPLE_MELD:
+		return true
+	if int(info.get("points", 0)) < 51:
+		return false
+	return _has_natural_tierce(cards)
+
+func _opening_error_message() -> String:
+	if opening_rule == OpeningRule.RAMI_51:
+		return "Ouverture Rami 51 : 51 points minimum et une tierce franche sans Joker."
+	return "Ouverture invalide."
+
+func _has_natural_tierce(cards: Array[CardInstance]) -> bool:
+	for suit: String in SUITS:
+		var values: Array[int] = []
+		for card: CardInstance in cards:
+			if card.is_joker() or card.suit != suit:
+				continue
+			var value: int = rank_value(card.rank)
+			if not values.has(value):
+				values.append(value)
+		values.sort()
+		if _contains_three_consecutive(values):
+			return true
+		if values.has(1):
+			var high: Array[int] = []
+			for value: int in values:
+				high.append(14 if value == 1 else value)
+			high.sort()
+			if _contains_three_consecutive(high):
+				return true
+	return false
+
+func _contains_three_consecutive(values: Array[int]) -> bool:
+	if values.size() < 3:
+		return false
+	var streak: int = 1
+	for i: int in range(1, values.size()):
+		if values[i] == values[i - 1] + 1:
+			streak += 1
+			if streak >= 3:
+				return true
+		else:
+			streak = 1
+	return false
+
 func detect_player_melds() -> Array[Dictionary]:
 	return detect_melds(player_hand)
 
-func detect_melds(hand: Array[String]) -> Array[Dictionary]:
+func detect_melds(hand: Array[CardInstance]) -> Array[Dictionary]:
 	var candidates: Array[Dictionary] = []
 	var n: int = hand.size()
 	if n < 3:
@@ -308,7 +384,7 @@ func detect_melds(hand: Array[String]) -> Array[Dictionary]:
 		var count: int = _bit_count(mask)
 		if count < 3 or count > 13:
 			continue
-		var cards: Array[String] = []
+		var cards: Array[CardInstance] = []
 		var indices: Array[int] = []
 		for i: int in range(n):
 			if (mask & (1 << i)) != 0:
@@ -341,7 +417,7 @@ func detect_melds(hand: Array[String]) -> Array[Dictionary]:
 				break
 		if not dominated:
 			filtered.append(candidate)
-		if filtered.size() >= 10:
+		if filtered.size() >= 12:
 			break
 	return filtered
 
@@ -352,24 +428,30 @@ func _candidate_better(a: Dictionary, b: Dictionary) -> bool:
 		return ac > bc
 	return int(a.get("points", 0)) > int(b.get("points", 0))
 
-func _simulate_add_to_meld(existing: Array[String], selected: Array[String], allow_replace: bool) -> Dictionary:
-	var current: Array[String] = existing.duplicate()
-	var remaining: Array[String] = selected.duplicate()
-	var recovered: Array[String] = []
+func _simulate_add_to_meld(existing: Array[CardInstance], selected: Array[CardInstance], allow_replace: bool) -> Dictionary:
+	var current: Array[CardInstance] = []
+	for card: CardInstance in existing:
+		current.append(card)
+	var remaining: Array[CardInstance] = []
+	for card: CardInstance in selected:
+		remaining.append(card)
+	var recovered: Array[CardInstance] = []
 
 	if allow_replace:
 		var scan: int = 0
 		while scan < remaining.size():
-			var card: String = remaining[scan]
-			if is_joker(card):
+			var card: CardInstance = remaining[scan]
+			if card.is_joker():
 				scan += 1
 				continue
 			var replaced: bool = false
 			for j: int in range(current.size()):
-				if not is_joker(current[j]):
+				if not current[j].is_joker():
 					continue
-				var test: Array[String] = current.duplicate()
-				var joker: String = test[j]
+				var test: Array[CardInstance] = []
+				for existing_card: CardInstance in current:
+					test.append(existing_card)
+				var joker: CardInstance = test[j]
 				test.remove_at(j)
 				test.append(card)
 				var info: Dictionary = validate_meld(test)
@@ -382,8 +464,10 @@ func _simulate_add_to_meld(existing: Array[String], selected: Array[String], all
 			if not replaced:
 				scan += 1
 
-	for card: String in remaining:
-		var test_add: Array[String] = current.duplicate()
+	for card: CardInstance in remaining:
+		var test_add: Array[CardInstance] = []
+		for existing_card: CardInstance in current:
+			test_add.append(existing_card)
 		test_add.append(card)
 		var add_info: Dictionary = validate_meld(test_add)
 		if not bool(add_info.get("valid", false)):
@@ -394,7 +478,7 @@ func _simulate_add_to_meld(existing: Array[String], selected: Array[String], all
 func _run_ai_turn(ai_index: int) -> void:
 	if winner_index >= 0:
 		return
-	var hand: Array[String] = get_hand(ai_index)
+	var hand: Array[CardInstance] = get_hand(ai_index)
 	_recycle_stock_if_needed()
 	var took_discard: bool = false
 	if not discard_pile.is_empty() and _ai_should_take_discard(hand, discard_pile.back()):
@@ -408,7 +492,7 @@ func _run_ai_turn(ai_index: int) -> void:
 
 	var opened: bool = is_opened(ai_index)
 	if not opened:
-		var opening: Dictionary = _best_ai_candidate(hand)
+		var opening: Dictionary = _best_ai_candidate(hand, true)
 		if not opening.is_empty():
 			_ai_play_candidate(ai_index, opening)
 			_set_opened(ai_index, true)
@@ -419,13 +503,12 @@ func _run_ai_turn(ai_index: int) -> void:
 		var safety: int = 0
 		while safety < 4:
 			safety += 1
-			var next_meld: Dictionary = _best_ai_candidate(hand)
+			var next_meld: Dictionary = _best_ai_candidate(hand, false)
 			if next_meld.is_empty():
 				break
 			_ai_play_candidate(ai_index, next_meld)
 
 	if hand.is_empty():
-		# La règle impose une dernière défausse : l'IA ne doit jamais vider sa main par pose.
 		return
 	var discard_index: int = _ai_discard_index(hand)
 	discard_pile.append(hand[discard_index])
@@ -435,8 +518,10 @@ func _run_ai_turn(ai_index: int) -> void:
 		return
 	last_message = "%s a joué%s." % [PLAYER_NAMES[ai_index], " après avoir pris la défausse" if took_discard else ""]
 
-func _ai_should_take_discard(hand: Array[String], card: String) -> bool:
-	var test: Array[String] = hand.duplicate()
+func _ai_should_take_discard(hand: Array[CardInstance], card: CardInstance) -> bool:
+	var test: Array[CardInstance] = []
+	for held: CardInstance in hand:
+		test.append(held)
 	test.append(card)
 	var candidates: Array[Dictionary] = detect_melds(test)
 	var new_index: int = test.size() - 1
@@ -446,24 +531,30 @@ func _ai_should_take_discard(hand: Array[String], card: String) -> bool:
 			return true
 	return false
 
-func _best_ai_candidate(hand: Array[String]) -> Dictionary:
+func _best_ai_candidate(hand: Array[CardInstance], opening_only: bool) -> Dictionary:
 	var candidates: Array[Dictionary] = detect_melds(hand)
 	for candidate: Dictionary in candidates:
 		var indices: Array[int] = _dictionary_int_array(candidate, "indices")
-		if hand.size() - indices.size() >= 1:
-			return candidate
+		if hand.size() - indices.size() < 1:
+			continue
+		if opening_only:
+			var cards: Array[CardInstance] = _dictionary_cards(candidate)
+			var info: Dictionary = validate_meld(cards)
+			if not _opening_is_valid(cards, info):
+				continue
+		return candidate
 	return {}
 
 func _ai_play_candidate(ai_index: int, candidate: Dictionary) -> void:
-	var hand: Array[String] = get_hand(ai_index)
+	var hand: Array[CardInstance] = get_hand(ai_index)
 	var indices: Array[int] = _dictionary_int_array(candidate, "indices")
-	var cards: Array[String] = _dictionary_string_array(candidate, "cards")
+	var cards: Array[CardInstance] = _dictionary_cards(candidate)
 	_remove_indices(hand, indices)
 	var info: Dictionary = validate_meld(cards)
 	table_melds.append({"owner": ai_index, "cards": _ordered_meld(cards, info), "kind": String(info.get("kind", ""))})
 
 func _ai_add_to_table(ai_index: int) -> void:
-	var hand: Array[String] = get_hand(ai_index)
+	var hand: Array[CardInstance] = get_hand(ai_index)
 	var changed: bool = true
 	var safety: int = 0
 	while changed and safety < 8 and hand.size() > 1:
@@ -472,10 +563,11 @@ func _ai_add_to_table(ai_index: int) -> void:
 		for card_index: int in range(hand.size()):
 			if hand.size() <= 1:
 				return
-			var card: String = hand[card_index]
+			var card: CardInstance = hand[card_index]
 			for meld_index: int in range(table_melds.size()):
-				var existing: Array[String] = _dictionary_cards(table_melds[meld_index])
-				var selected: Array[String] = [card]
+				var existing: Array[CardInstance] = _dictionary_cards(table_melds[meld_index])
+				var selected: Array[CardInstance] = []
+				selected.append(card)
 				var simulation: Dictionary = _simulate_add_to_meld(existing, selected, false)
 				if bool(simulation.get("ok", false)):
 					hand.remove_at(card_index)
@@ -485,12 +577,11 @@ func _ai_add_to_table(ai_index: int) -> void:
 			if changed:
 				break
 
-func _ai_discard_index(hand: Array[String]) -> int:
+func _ai_discard_index(hand: Array[CardInstance]) -> int:
 	var best_index: int = 0
 	var best_value: int = -1
 	for i: int in range(hand.size()):
-		var card: String = hand[i]
-		var value: int = card_points(card)
+		var value: int = card_points(hand[i])
 		if value > best_value:
 			best_value = value
 			best_index = i
@@ -499,7 +590,7 @@ func _ai_discard_index(hand: Array[String]) -> int:
 func _finish_game(winner: int) -> void:
 	winner_index = winner
 	turn_index = winner
-	phase = "game_over"
+	phase = Phase.GAME_OVER
 	ranking = _build_ranking()
 	last_message = "%s termine la manche !" % PLAYER_NAMES[winner]
 
@@ -522,16 +613,16 @@ func _build_ranking() -> Array[Dictionary]:
 		previous_place = place
 	return rows
 
-func hand_score(hand: Array[String]) -> int:
+func hand_score(hand: Array[CardInstance]) -> int:
 	var total: int = 0
-	for card: String in hand:
+	for card: CardInstance in hand:
 		total += card_points(card)
 	return total
 
-func card_points(card_id: String) -> int:
-	if is_joker(card_id):
+func card_points(card: CardInstance) -> int:
+	if card.is_joker():
 		return 20
-	return rank_points(card_rank(card_id))
+	return rank_points(card.rank)
 
 func rank_points(rank: String) -> int:
 	if rank == "A":
@@ -543,7 +634,7 @@ func rank_points(rank: String) -> int:
 func rank_value(rank: String) -> int:
 	return RANKS.find(rank) + 1
 
-func get_hand(player_index: int) -> Array[String]:
+func get_hand(player_index: int) -> Array[CardInstance]:
 	if player_index == 0:
 		return player_hand
 	if player_index == 1:
@@ -565,37 +656,22 @@ func _set_opened(player_index: int, value: bool) -> void:
 	else:
 		ai2_opened = value
 
-func is_joker(card_id: String) -> bool:
-	return card_id.begins_with("joker")
-
-func card_suit(card_id: String) -> String:
-	if is_joker(card_id):
-		return "joker"
-	var split_at: int = card_id.rfind("_")
-	return card_id.substr(0, split_at)
-
-func card_rank(card_id: String) -> String:
-	if is_joker(card_id):
-		return "JOKER"
-	var split_at: int = card_id.rfind("_")
-	return card_id.substr(split_at + 1)
-
-func _selection_cards(hand: Array[String], indices: Array[int]) -> Dictionary:
+func _selection_cards(hand: Array[CardInstance], indices: Array[int]) -> Dictionary:
 	var unique: Array[int] = []
 	for idx: int in indices:
 		if idx < 0 or idx >= hand.size() or unique.has(idx):
 			return {"ok": false, "message": "Sélection invalide."}
 		unique.append(idx)
-	var cards: Array[String] = []
+	var cards: Array[CardInstance] = []
 	for idx: int in unique:
 		cards.append(hand[idx])
 	return {"ok": true, "cards": cards}
 
-func _ordered_meld(cards: Array[String], info: Dictionary) -> Array[String]:
-	var natural: Array[String] = []
-	var jokers: Array[String] = []
-	for card: String in cards:
-		if is_joker(card):
+func _ordered_meld(cards: Array[CardInstance], info: Dictionary) -> Array[CardInstance]:
+	var natural: Array[CardInstance] = []
+	var jokers: Array[CardInstance] = []
+	for card: CardInstance in cards:
+		if card.is_joker():
 			jokers.append(card)
 		else:
 			natural.append(card)
@@ -604,9 +680,9 @@ func _ordered_meld(cards: Array[String], info: Dictionary) -> Array[String]:
 		natural.append_array(jokers)
 		return natural
 	var high_ace: bool = bool(info.get("high_ace", false))
-	natural.sort_custom(func(a: String, b: String) -> bool:
-		var av: int = rank_value(card_rank(a))
-		var bv: int = rank_value(card_rank(b))
+	natural.sort_custom(func(a: CardInstance, b: CardInstance) -> bool:
+		var av: int = rank_value(a.rank)
+		var bv: int = rank_value(b.rank)
 		if high_ace:
 			av = 14 if av == 1 else av
 			bv = 14 if bv == 1 else bv
@@ -615,22 +691,27 @@ func _ordered_meld(cards: Array[String], info: Dictionary) -> Array[String]:
 	natural.append_array(jokers)
 	return natural
 
-func _consume_required_jokers(cards: Array[String]) -> void:
-	for card: String in cards:
-		if not is_joker(card):
+func _consume_required_jokers(cards: Array[CardInstance]) -> void:
+	for card: CardInstance in cards:
+		if not card.is_joker():
 			continue
-		var idx: int = must_replay_jokers.find(card)
+		var idx: int = -1
+		for i: int in range(must_replay_jokers.size()):
+			if must_replay_jokers[i].uid == card.uid:
+				idx = i
+				break
 		if idx >= 0:
 			must_replay_jokers.remove_at(idx)
 
-func _dictionary_cards(item: Dictionary) -> Array[String]:
-	return _dictionary_string_array(item, "cards")
+func _dictionary_cards(item: Dictionary) -> Array[CardInstance]:
+	return _dictionary_card_array(item, "cards")
 
-func _dictionary_string_array(item: Dictionary, key: String) -> Array[String]:
-	var out: Array[String] = []
+func _dictionary_card_array(item: Dictionary, key: String) -> Array[CardInstance]:
+	var out: Array[CardInstance] = []
 	var raw: Array = item.get(key, [])
 	for value: Variant in raw:
-		out.append(String(value))
+		if value is CardInstance:
+			out.append(value as CardInstance)
 	return out
 
 func _dictionary_int_array(item: Dictionary, key: String) -> Array[int]:
@@ -640,8 +721,10 @@ func _dictionary_int_array(item: Dictionary, key: String) -> Array[int]:
 		out.append(int(value))
 	return out
 
-func _remove_indices(hand: Array[String], indices: Array[int]) -> void:
-	var sorted: Array[int] = indices.duplicate()
+func _remove_indices(hand: Array[CardInstance], indices: Array[int]) -> void:
+	var sorted: Array[int] = []
+	for idx: int in indices:
+		sorted.append(idx)
 	sorted.sort()
 	sorted.reverse()
 	for idx: int in sorted:
@@ -650,8 +733,10 @@ func _remove_indices(hand: Array[String], indices: Array[int]) -> void:
 func _recycle_stock_if_needed() -> void:
 	if not stock.is_empty() or discard_pile.size() <= 1:
 		return
-	var top: String = discard_pile.pop_back()
-	stock = discard_pile.duplicate()
+	var top: CardInstance = discard_pile.pop_back()
+	stock.clear()
+	for card: CardInstance in discard_pile:
+		stock.append(card)
 	stock.shuffle()
 	discard_pile.clear()
 	discard_pile.append(top)
@@ -664,20 +749,24 @@ func _bit_count(mask: int) -> int:
 		value >>= 1
 	return count
 
-func _card_less_suit(a: String, b: String) -> bool:
-	var a_suit: int = 99 if is_joker(a) else SUITS.find(card_suit(a))
-	var b_suit: int = 99 if is_joker(b) else SUITS.find(card_suit(b))
+func _card_less_suit(a: CardInstance, b: CardInstance) -> bool:
+	var a_suit: int = 99 if a.is_joker() else SUITS.find(a.suit)
+	var b_suit: int = 99 if b.is_joker() else SUITS.find(b.suit)
 	if a_suit != b_suit:
 		return a_suit < b_suit
-	var a_rank: int = 99 if is_joker(a) else RANKS.find(card_rank(a))
-	var b_rank: int = 99 if is_joker(b) else RANKS.find(card_rank(b))
-	return a_rank < b_rank
-
-func _card_less_rank(a: String, b: String) -> bool:
-	var a_rank: int = 99 if is_joker(a) else RANKS.find(card_rank(a))
-	var b_rank: int = 99 if is_joker(b) else RANKS.find(card_rank(b))
+	var a_rank: int = 99 if a.is_joker() else RANKS.find(a.rank)
+	var b_rank: int = 99 if b.is_joker() else RANKS.find(b.rank)
 	if a_rank != b_rank:
 		return a_rank < b_rank
-	var a_suit: int = 99 if is_joker(a) else SUITS.find(card_suit(a))
-	var b_suit: int = 99 if is_joker(b) else SUITS.find(card_suit(b))
-	return a_suit < b_suit
+	return a.uid < b.uid
+
+func _card_less_rank(a: CardInstance, b: CardInstance) -> bool:
+	var a_rank: int = 99 if a.is_joker() else RANKS.find(a.rank)
+	var b_rank: int = 99 if b.is_joker() else RANKS.find(b.rank)
+	if a_rank != b_rank:
+		return a_rank < b_rank
+	var a_suit: int = 99 if a.is_joker() else SUITS.find(a.suit)
+	var b_suit: int = 99 if b.is_joker() else SUITS.find(b.suit)
+	if a_suit != b_suit:
+		return a_suit < b_suit
+	return a.uid < b.uid
