@@ -38,9 +38,13 @@ var discard_button: Button
 var table_button: Button
 
 func _ready() -> void:
+	print("RAMI_RUNTIME: ready_start")
 	_build_ui()
+	game.set_opening_rule(RamiGame.OpeningRule.SIMPLE_MELD)
 	game.new_round()
+	print("RAMI_RUNTIME: dealt player=", game.player_hand.size(), " ai1=", game.ai1_hand.size(), " ai2=", game.ai2_hand.size(), " stock=", game.stock.size(), " discard=", game.discard_pile.size())
 	_refresh_all()
+	print("RAMI_RUNTIME: refresh_ok player_nodes=", player_layer.get_child_count(), " ai1_nodes=", ai1_layer.get_child_count(), " ai2_nodes=", ai2_layer.get_child_count())
 	_play_deal_animation()
 
 func _build_ui() -> void:
@@ -56,24 +60,20 @@ func _build_ui() -> void:
 
 	var ai1_panel: Panel = _panel(Vector2(545, 6), Vector2(245, 64), Color("#102A28"), Color("#4D7972"), 22, 2)
 	_make_label("IA 1", Vector2(12, 4), Vector2(90, 28), 21, TEXT, HORIZONTAL_ALIGNMENT_LEFT, ai1_panel)
-	ai1_count_label = _make_label("", Vector2(12, 31), Vector2(110, 25), 16, GOLD, HORIZONTAL_ALIGNMENT_LEFT, ai1_panel)
-	_make_label("haut", Vector2(150, 14), Vector2(72, 30), 15, MUTED, HORIZONTAL_ALIGNMENT_RIGHT, ai1_panel)
+	ai1_count_label = _make_label("", Vector2(12, 31), Vector2(130, 25), 16, GOLD, HORIZONTAL_ALIGNMENT_LEFT, ai1_panel)
 
 	var ai2_panel: Panel = _panel(Vector2(810, 6), Vector2(245, 64), Color("#102A28"), Color("#4D7972"), 22, 2)
 	_make_label("IA 2", Vector2(12, 4), Vector2(90, 28), 21, TEXT, HORIZONTAL_ALIGNMENT_LEFT, ai2_panel)
-	ai2_count_label = _make_label("", Vector2(12, 31), Vector2(110, 25), 16, GOLD, HORIZONTAL_ALIGNMENT_LEFT, ai2_panel)
-	_make_label("haut", Vector2(150, 14), Vector2(72, 30), 15, MUTED, HORIZONTAL_ALIGNMENT_RIGHT, ai2_panel)
+	ai2_count_label = _make_label("", Vector2(12, 31), Vector2(130, 25), 16, GOLD, HORIZONTAL_ALIGNMENT_LEFT, ai2_panel)
 
-	var info: Panel = _panel(Vector2(1260, 5), Vector2(320, 66), Color("#10151C"), Color("#4B5D67"), 20, 2)
-	turn_label = _make_label("", Vector2(10, 3), Vector2(300, 32), 18, TEXT, HORIZONTAL_ALIGNMENT_CENTER, info)
-	score_label = _make_label("", Vector2(10, 32), Vector2(300, 28), 15, GOLD, HORIZONTAL_ALIGNMENT_CENTER, info)
+	var info: Panel = _panel(Vector2(1245, 5), Vector2(335, 66), Color("#10151C"), Color("#4B5D67"), 20, 2)
+	turn_label = _make_label("", Vector2(10, 3), Vector2(315, 32), 18, TEXT, HORIZONTAL_ALIGNMENT_CENTER, info)
+	score_label = _make_label("", Vector2(10, 32), Vector2(315, 28), 15, GOLD, HORIZONTAL_ALIGNMENT_CENTER, info)
 
 	ai1_layer = Control.new()
-	ai1_layer.position = Vector2.ZERO
 	ai1_layer.size = Vector2(1600, 250)
 	add_child(ai1_layer)
 	ai2_layer = Control.new()
-	ai2_layer.position = Vector2.ZERO
 	ai2_layer.size = Vector2(1600, 250)
 	add_child(ai2_layer)
 
@@ -85,7 +85,7 @@ func _build_ui() -> void:
 	table_button.add_theme_font_size_override("font_size", 17)
 	table_button.add_theme_color_override("font_color", Color(0.75, 0.9, 0.82, 0.72))
 	table_button.add_theme_stylebox_override("normal", _button_style(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 10))
-	table_button.add_theme_stylebox_override("pressed", _button_style(Color(0.1, 0.5, 0.3, 0.16), GREEN, 2, 10))
+	table_button.add_theme_stylebox_override("disabled", _button_style(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 10))
 	table_button.pressed.connect(_on_table_pressed)
 	add_child(table_button)
 
@@ -107,7 +107,6 @@ func _build_ui() -> void:
 	add_child(combo_layer)
 
 	player_layer = Control.new()
-	player_layer.position = Vector2.ZERO
 	player_layer.size = Vector2(1600, 900)
 	add_child(player_layer)
 
@@ -122,10 +121,9 @@ func _build_ui() -> void:
 
 	discard_button = _make_button("Défausser • Fin du tour", Vector2(1190, 817), Vector2(380, 62), 21, Color("#0B5E40"), GREEN)
 	discard_button.pressed.connect(_on_discard_pressed)
-	_make_label("v0.0.5 ROADMAP", Vector2(8, 883), Vector2(180, 16), 12, Color(1, 1, 1, 0.42))
+	_make_label("v0.0.6 FOUNDATIONS", Vector2(8, 883), Vector2(210, 16), 12, Color(1, 1, 1, 0.42))
 
 	modal_layer = Control.new()
-	modal_layer.position = Vector2.ZERO
 	modal_layer.size = Vector2(1600, 900)
 	modal_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(modal_layer)
@@ -147,13 +145,16 @@ func _build_stock() -> void:
 	stock_button.ignore_texture_size = true
 	stock_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	stock_button.texture_normal = _load_card_texture("back_red")
+	stock_button.texture_disabled = stock_button.texture_normal
 	stock_button.pressed.connect(_on_draw_stock)
 	stock_layer.add_child(stock_button)
 	_make_label("Pioche", Vector2(0, 168), Vector2(140, 27), 21, TEXT, HORIZONTAL_ALIGNMENT_CENTER, stock_layer)
 	stock_count_label = _make_label("", Vector2(0, 194), Vector2(140, 22), 15, MUTED, HORIZONTAL_ALIGNMENT_CENTER, stock_layer)
 
 func _refresh_all() -> void:
-	detected_combos = game.detect_player_melds() if game.phase == "action" and game.turn_index == 0 else []
+	detected_combos.clear()
+	if game.phase == RamiGame.Phase.ACTION and game.turn_index == 0:
+		detected_combos = game.detect_player_melds()
 	if selected_detected_combo >= detected_combos.size():
 		selected_detected_combo = -1
 	_refresh_opponents()
@@ -173,7 +174,7 @@ func _refresh_all() -> void:
 		discard_button.disabled = true
 		table_button.disabled = true
 		_show_game_over()
-	elif game.phase == "draw":
+	elif game.phase == RamiGame.Phase.DRAW:
 		turn_label.text = "À VOUS • PIOCHE OBLIGATOIRE"
 		discard_button.disabled = true
 		table_button.disabled = true
@@ -188,8 +189,8 @@ func _refresh_all() -> void:
 func _refresh_opponents() -> void:
 	_clear_children(ai1_layer)
 	_clear_children(ai2_layer)
-	_draw_opponent_hand(game.ai1_hand.size(), Vector2(520, 100), ai1_layer, -1.0)
-	_draw_opponent_hand(game.ai2_hand.size(), Vector2(1080, 100), ai2_layer, 1.0)
+	_draw_opponent_hand(game.ai1_hand.size(), Vector2(520, 110), ai1_layer, -1.0)
+	_draw_opponent_hand(game.ai2_hand.size(), Vector2(1080, 110), ai2_layer, 1.0)
 
 func _draw_opponent_hand(count: int, center: Vector2, parent: Control, direction: float) -> void:
 	if count <= 0:
@@ -215,7 +216,6 @@ func _refresh_player() -> void:
 	var overlap: float = minf(76.0, 1120.0 / maxf(1.0, float(count - 1)))
 	var total_width: float = card_w + overlap * float(count - 1)
 	var start_x: float = 800.0 - total_width / 2.0
-
 	var membership: Dictionary = _combo_membership_map()
 	for i: int in range(count):
 		var center_delta: float = float(i) - float(count - 1) / 2.0
@@ -227,7 +227,8 @@ func _refresh_player() -> void:
 		if membership.has(i):
 			var combo_index: int = int(membership[i])
 			accent = COMBO_COLORS[combo_index % COMBO_COLORS.size()]
-		_make_card(game.player_hand[i], Vector2(start_x + float(i) * overlap, y), Vector2(card_w, card_h), game.phase == "action" and game.turn_index == 0, i, player_layer, selected, accent)
+		var card: CardInstance = game.player_hand[i]
+		_make_card(card.face_id(), Vector2(start_x + float(i) * overlap, y), Vector2(card_w, card_h), game.phase == RamiGame.Phase.ACTION and game.turn_index == 0, i, player_layer, selected, accent)
 
 func _combo_membership_map() -> Dictionary:
 	var out: Dictionary = {}
@@ -241,7 +242,7 @@ func _combo_membership_map() -> Dictionary:
 func _refresh_combo_bands() -> void:
 	_clear_children(combo_layer)
 	if detected_combos.is_empty():
-		_make_label("Le jeu surlignera ici les suites et groupes détectés après votre pioche.", Vector2(200, 4), Vector2(1140, 42), 16, Color(0.85, 0.9, 0.87, 0.52), HORIZONTAL_ALIGNMENT_CENTER, combo_layer)
+		_make_label("Après la pioche, les suites et groupes détectés apparaîtront ici.", Vector2(200, 4), Vector2(1140, 42), 16, Color(0.85, 0.9, 0.87, 0.52), HORIZONTAL_ALIGNMENT_CENTER, combo_layer)
 		return
 	var x: float = 0.0
 	for i: int in range(detected_combos.size()):
@@ -260,9 +261,9 @@ func _refresh_combo_bands() -> void:
 
 func _refresh_discard() -> void:
 	_clear_children(discard_layer)
-	var top: String = game.top_discard()
-	if top != "":
-		_make_card(top, Vector2(10, 0), Vector2(112, 158), game.phase == "draw" and game.turn_index == 0, -1, discard_layer, false, GOLD)
+	var top: CardInstance = game.top_discard()
+	if top != null:
+		_make_card(top.face_id(), Vector2(10, 0), Vector2(112, 158), game.phase == RamiGame.Phase.DRAW and game.turn_index == 0, -1, discard_layer, false, GOLD)
 	_make_label("Défausse", Vector2(0, 168), Vector2(135, 27), 21, TEXT, HORIZONTAL_ALIGNMENT_CENTER, discard_layer)
 	_make_label("Dernière carte", Vector2(0, 194), Vector2(135, 22), 14, MUTED, HORIZONTAL_ALIGNMENT_CENTER, discard_layer)
 
@@ -275,7 +276,7 @@ func _refresh_melds() -> void:
 	var y: float = 20.0
 	for meld_index: int in range(game.table_melds.size()):
 		var meld: Dictionary = game.table_melds[meld_index]
-		var cards: Array[String] = _dict_string_array(meld, "cards")
+		var cards: Array[CardInstance] = _dict_card_array(meld, "cards")
 		var owner: int = int(meld.get("owner", 0))
 		var w: float = 55.0
 		var h: float = 78.0
@@ -296,7 +297,7 @@ func _refresh_melds() -> void:
 		hit.pressed.connect(_on_meld_pressed.bind(meld_index))
 		meld_layer.add_child(hit)
 		for i: int in range(cards.size()):
-			_make_card(cards[i], Vector2(x + float(i) * 23.0, y), Vector2(w, h), false, -2, meld_layer, false, Color(0, 0, 0, 0))
+			_make_card(cards[i].face_id(), Vector2(x + float(i) * 23.0, y), Vector2(w, h), false, -2, meld_layer, false, Color(0, 0, 0, 0))
 		x += meld_width + 20.0
 
 func _make_card(card_id: String, pos: Vector2, card_size: Vector2, clickable: bool, index: int, parent: Control, selected: bool, accent: Color) -> Control:
@@ -305,7 +306,6 @@ func _make_card(card_id: String, pos: Vector2, card_size: Vector2, clickable: bo
 	wrapper.size = card_size
 	parent.add_child(wrapper)
 	var frame: Panel = Panel.new()
-	frame.position = Vector2.ZERO
 	frame.size = card_size
 	frame.add_theme_stylebox_override("panel", _card_style(selected, accent))
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -323,6 +323,7 @@ func _make_card(card_id: String, pos: Vector2, card_size: Vector2, clickable: bo
 	button.ignore_texture_size = true
 	button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	button.texture_normal = _load_card_texture(card_id)
+	button.texture_disabled = button.texture_normal
 	button.disabled = not clickable
 	wrapper.add_child(button)
 	if clickable:
@@ -366,7 +367,7 @@ func _on_draw_discard() -> void:
 		_refresh_all()
 
 func _on_player_card_pressed(index: int) -> void:
-	if game.phase != "action" or game.turn_index != 0:
+	if game.phase != RamiGame.Phase.ACTION or game.turn_index != 0:
 		return
 	selected_detected_combo = -1
 	if selected_indices.has(index):
@@ -447,7 +448,6 @@ func _show_game_over() -> void:
 	modal_layer.mouse_filter = Control.MOUSE_FILTER_STOP
 	var shade: ColorRect = ColorRect.new()
 	shade.color = Color(0, 0, 0, 0.72)
-	shade.position = Vector2.ZERO
 	shade.size = Vector2(1600, 900)
 	shade.mouse_filter = Control.MOUSE_FILTER_STOP
 	modal_layer.add_child(shade)
@@ -458,16 +458,14 @@ func _show_game_over() -> void:
 		var place: int = int(row.get("place", 0))
 		var name: String = String(row.get("name", ""))
 		var points: int = int(row.get("points", 0))
-		var line: String = "%dᵉ  •  %s  •  %d points" % [place, name, points]
-		_make_label(line, Vector2(90, y), Vector2(560, 58), 27, TEXT, HORIZONTAL_ALIGNMENT_CENTER, box)
+		_make_label("%dᵉ  •  %s  •  %d points" % [place, name, points], Vector2(90, y), Vector2(560, 58), 27, TEXT, HORIZONTAL_ALIGNMENT_CENTER, box)
 		y += 72.0
 	_make_label("Moins de points = meilleur classement", Vector2(80, 346), Vector2(580, 38), 18, MUTED, HORIZONTAL_ALIGNMENT_CENTER, box)
 	var replay: Button = _make_button_in("REJOUER", Vector2(165, 410), Vector2(410, 70), 27, Color("#0B5E40"), GREEN, box)
 	replay.pressed.connect(_on_replay)
 
 func _on_replay() -> void:
-	for child: Node in modal_layer.get_children():
-		child.free()
+	_clear_children(modal_layer)
 	modal_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_reset_selection()
 	game.new_round()
@@ -482,11 +480,12 @@ func _dict_int_array(item: Dictionary, key: String) -> Array[int]:
 		out.append(int(value))
 	return out
 
-func _dict_string_array(item: Dictionary, key: String) -> Array[String]:
-	var out: Array[String] = []
+func _dict_card_array(item: Dictionary, key: String) -> Array[CardInstance]:
+	var out: Array[CardInstance] = []
 	var raw: Array = item.get(key, [])
 	for value: Variant in raw:
-		out.append(String(value))
+		if value is CardInstance:
+			out.append(value as CardInstance)
 	return out
 
 func _panel(pos: Vector2, sz: Vector2, bg: Color, border: Color, radius: int, width: int, parent: Control = self) -> Panel:
@@ -535,6 +534,7 @@ func _make_button(text_value: String, pos: Vector2, sz: Vector2, font_size: int,
 	b.add_theme_stylebox_override("normal", _button_style(bg, border, 2, 18))
 	b.add_theme_stylebox_override("hover", _button_style(bg.lightened(0.08), border.lightened(0.10), 3, 18))
 	b.add_theme_stylebox_override("pressed", _button_style(bg.darkened(0.08), border.lightened(0.18), 3, 18))
+	b.add_theme_stylebox_override("disabled", _button_style(bg.darkened(0.18), border.darkened(0.25), 2, 18))
 	add_child(b)
 	return b
 
@@ -563,7 +563,7 @@ func _button_style(bg: Color, border: Color, width: int, radius: int) -> StyleBo
 
 func _clear_children(node: Node) -> void:
 	for child: Node in node.get_children():
-		child.queue_free()
+		child.free()
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://Main.tscn")
