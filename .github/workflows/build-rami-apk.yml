@@ -1,9 +1,9 @@
-name: Build Rami APK v0.0.3
+name: Build Rami APK v0.0.4
 
 on:
   push:
     branches:
-      - rami-apk-v0.0.3
+      - rami-apk-v0.0.4
   workflow_dispatch:
 
 permissions:
@@ -93,12 +93,12 @@ jobs:
           set -eux
           APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.3.apk"
-          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.3.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.4.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.4.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rami_v0.0.3_APK
-          path: Rami_v0.0.3.apk
+          name: Rami_v0.0.4_APK
+          path: Rami_v0.0.4.apk
           if-no-files-found: error
