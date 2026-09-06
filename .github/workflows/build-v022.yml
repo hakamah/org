@@ -15,9 +15,9 @@ jobs:
         run: |
           set -eux
           for v in 009 010 011 012 013 014 015 016 017 018 019 020 021 022; do python3 tools/patch_v${v}_*.py; done
-          grep -q 'RAMI_V022: pooled_hand_nodes=true texture_cache=true shared_card_shader=true visual_layout_unchanged=true' GameTable.gd
+          grep -q 'RAMI_V022: pooled_hand_nodes=true texture_cache=true shared_card_shader=true fast_meld_detector=true visual_layout_unchanged=true' GameTable.gd
+          grep -q 'func _cartesian_index_choices' RamiGame.gd
           grep -q 'version/name="0.0.22"' export_presets.cfg
-          grep -q 'var _meld_cache: Dictionary = {}' RamiGame.gd
       - name: Cards
         run: |
           rm -rf assets/cards /tmp/deck /tmp/deck.zip; mkdir -p assets/cards
@@ -58,14 +58,15 @@ jobs:
         run: |
           set -euo pipefail
           G=/home/runner/.local/share/godot/godot_executable/Godot_v4.7.2-stable_linux.x86_64
-          $G --headless --path "$GITHUB_WORKSPACE" res://tests/TestRunner.tscn 2>&1 | tee /tmp/rules.log
+          timeout 25s $G --headless --path "$GITHUB_WORKSPACE" res://tests/TestRunner.tscn 2>&1 | tee /tmp/rules.log
           grep -q 'RAMI_TESTS: PASS' /tmp/rules.log
+          ! grep -q 'SCRIPT ERROR\|Parse Error\|Failed to load script' /tmp/rules.log
           for RES in 1600x900 2400x1080 1280x800; do
             W=${RES%x*}; H=${RES#*x}
             LOG=/tmp/v022-${RES}.log
             timeout 8s $G --headless --resolution ${W}x${H} --path "$GITHUB_WORKSPACE" res://GameTable.tscn --quit-after 2 2>&1 | tee "$LOG"
             grep -q 'RAMI_RUNTIME: refresh_ok' "$LOG"
-            grep -q 'RAMI_V022: pooled_hand_nodes=true texture_cache=true shared_card_shader=true visual_layout_unchanged=true' "$LOG"
+            grep -q 'RAMI_V022: pooled_hand_nodes=true texture_cache=true shared_card_shader=true fast_meld_detector=true visual_layout_unchanged=true' "$LOG"
             ! grep -q 'SCRIPT ERROR\|Parse Error\|Failed to load script' "$LOG"
           done
       - name: Collect
