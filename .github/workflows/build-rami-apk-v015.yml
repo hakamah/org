@@ -1,0 +1,127 @@
+name: Build Rami APK v0.0.15
+
+on:
+  push:
+    branches:
+      - rami-apk-v0.0.15-visual-selection
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Apply mobile UI patches
+        run: |
+          set -eux
+          python3 tools/patch_v009_clean_ui.py
+          python3 tools/patch_v010_combo_table.py
+          python3 tools/patch_v011_discard_table.py
+          python3 tools/patch_v012_table_persistence.py
+          python3 tools/patch_v013_table_extensions.py
+          python3 tools/patch_v014_discard_icon.py
+          python3 tools/patch_v015_visual_selection.py
+          grep -q 'RAMI_V015: combo_single_card=true table_brighter=true table_bigger=true compact_melds=true app_icon_final=true' GameTable.gd
+          grep -q 'RAMI_ICON_V015_FINAL' assets/app_icon.svg
+          grep -q 'version/name="0.0.15"' export_presets.cfg
+
+      - name: Fetch public domain playing cards
+        run: |
+          set -eux
+          rm -rf assets/cards /tmp/rami-deck /tmp/rami-deck.zip
+          mkdir -p assets/cards
+          curl -L --fail --retry 3 https://github.com/AustinGabriel/The-Public-Domain-Deck-Public-Domain-and-CC0-Playing-Cards/archive/refs/heads/main.zip -o /tmp/rami-deck.zip
+          unzip -q /tmp/rami-deck.zip -d /tmp/rami-deck
+          python3 <<'PY'
+          from pathlib import Path
+          import shutil
+          roots = list(Path('/tmp/rami-deck').glob('*/png cards'))
+          assert roots
+          root = roots[0]
+          dst = Path('assets/cards')
+          suits = ['spades','hearts','diamonds','clubs']
+          ranks = [('A','ace'),('2','2'),('3','3'),('4','4'),('5','5'),('6','6'),('7','7'),('8','8'),('9','9'),('10','10'),('J','jack'),('Q','queen'),('K','king')]
+          for suit in suits:
+              for out_rank, file_rank in ranks:
+                  shutil.copy2(root/'card fronts'/suit/f'{file_rank} of {suit}.png', dst/f'{suit}_{out_rank}.png')
+          shutil.copy2(root/'card fronts'/'jokers'/'black joker.png', dst/'joker_black.png')
+          shutil.copy2(root/'card fronts'/'jokers'/'red joker.png', dst/'joker_red.png')
+          shutil.copy2(root/'card backs'/'card back red.png', dst/'back_red.png')
+          assert len(list(dst.glob('*.png'))) == 55
+          print('Prepared 55 card textures')
+          PY
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Create debug keystore
+        run: |
+          keytool -genkeypair -v -keystore "$GITHUB_WORKSPACE/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Rami,C=FR"
+
+      - name: Export Godot Android APK
+        id: export
+        uses: firebelley/godot-export@v8.0.0
+        env:
+          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: ${{ github.workspace }}/debug.keystore
+          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
+          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
+        with:
+          godot_executable_download_url: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          godot_export_templates_download_url: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz
+          relative_project_path: ./
+          presets_to_export: Android
+          export_debug: true
+          archive_output: false
+          verbose: true
+
+      - name: Engine rules tests
+        run: |
+          set -euo pipefail
+          GODOT=/home/runner/.local/share/godot/godot_executable/Godot_v4.7.2-stable_linux.x86_64
+          "$GODOT" --headless --path "$GITHUB_WORKSPACE" res://tests/TestRunner.tscn 2>&1 | tee /tmp/rami-tests.log
+          grep -q 'RAMI_TESTS: PASS' /tmp/rami-tests.log
+          ! grep -q 'SCRIPT ERROR' /tmp/rami-tests.log
+          ! grep -q 'Parse Error' /tmp/rami-tests.log
+
+      - name: Startup and responsive smoke test
+        run: |
+          set -euo pipefail
+          GODOT=/home/runner/.local/share/godot/godot_executable/Godot_v4.7.2-stable_linux.x86_64
+          for RES in 1600x900 2400x1080 1280x800; do
+            W=${RES%x*}; H=${RES#*x}
+            LOG="/tmp/rami-${RES}.log"
+            timeout 8s "$GODOT" --headless --resolution ${W}x${H} --path "$GITHUB_WORKSPACE" res://GameTable.tscn --quit-after 2 2>&1 | tee "$LOG"
+            grep -q 'RAMI_RUNTIME: ready_start' "$LOG"
+            grep -q 'RAMI_RUNTIME: refresh_ok' "$LOG"
+            grep -q 'RAMI_V015: combo_single_card=true table_brighter=true table_bigger=true compact_melds=true app_icon_final=true' "$LOG"
+            ! grep -q 'SCRIPT ERROR' "$LOG"
+            ! grep -q 'Parse Error' "$LOG"
+          done
+
+      - name: Collect APK
+        run: |
+          set -eux
+          APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.15.apk"
+          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.15.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.15.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rami_v0.0.15_APK
+          path: Rami_v0.0.15.apk
+          if-no-files-found: error
