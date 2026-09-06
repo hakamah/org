@@ -1,0 +1,82 @@
+name: Build Rami APK v0.0.25
+on:
+  push:
+    branches: [rami-apk-v0.0.25-table-two-rows-fold-joker]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Apply patches
+        run: |
+          set -eux
+          for v in 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024 025; do
+            for script in tools/patch_v${v}_*.py; do
+              python3 "$script"
+            done
+          done
+          grep -q 'RAMI_V025: horizontal_first=true prefer_two_rows=true fold_true_complete=true joker_not_complete=true' GameTable.gd
+          grep -q 'TABLE_TWO_ROW_MIN_SCALE' GameTable.gd
+          grep -q 'for card: CardInstance in cards:' GameTable.gd
+          grep -q 'version/name="0.0.25"' export_presets.cfg
+      - name: Cards
+        run: |
+          rm -rf assets/cards /tmp/deck /tmp/deck.zip; mkdir -p assets/cards
+          curl -L --fail https://github.com/AustinGabriel/The-Public-Domain-Deck-Public-Domain-and-CC0-Playing-Cards/archive/refs/heads/main.zip -o /tmp/deck.zip
+          unzip -q /tmp/deck.zip -d /tmp/deck
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          root=list(Path('/tmp/deck').glob('*/png cards'))[0]; dst=Path('assets/cards')
+          ranks=[('A','ace'),('2','2'),('3','3'),('4','4'),('5','5'),('6','6'),('7','7'),('8','8'),('9','9'),('10','10'),('J','jack'),('Q','queen'),('K','king')]
+          for s in ['spades','hearts','diamonds','clubs']:
+              for out,name in ranks: shutil.copy2(root/'card fronts'/s/f'{name} of {s}.png',dst/f'{s}_{out}.png')
+          shutil.copy2(root/'card fronts'/'jokers'/'black joker.png',dst/'joker_black.png')
+          shutil.copy2(root/'card fronts'/'jokers'/'red joker.png',dst/'joker_red.png')
+          shutil.copy2(root/'card backs'/'card back red.png',dst/'back_red.png')
+          assert len(list(dst.glob('*.png'))) == 55
+          PY
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+      - name: Keystore
+        run: keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Rami,C=FR'
+      - name: Export release
+        id: export
+        uses: firebelley/godot-export@v8.0.0
+        with:
+          godot_executable_download_url: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          godot_export_templates_download_url: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz
+          relative_project_path: ./
+          presets_to_export: Android
+          export_debug: false
+          archive_output: false
+      - name: Tests
+        run: |
+          set -euo pipefail
+          G=/home/runner/.local/share/godot/godot_executable/Godot_v4.7.2-stable_linux.x86_64
+          timeout 25s $G --headless --path "$GITHUB_WORKSPACE" res://tests/TestRunner.tscn 2>&1 | tee /tmp/rules.log
+          grep -q 'RAMI_TESTS: PASS' /tmp/rules.log
+          ! grep -q 'SCRIPT ERROR\|Parse Error\|Failed to load script' /tmp/rules.log
+          for RES in 1600x900 2400x1080 1280x800; do
+            W=${RES%x*}; H=${RES#*x}
+            LOG=/tmp/v025-${RES}.log
+            timeout 8s $G --headless --resolution ${W}x${H} --path "$GITHUB_WORKSPACE" res://GameTable.tscn --quit-after 2 2>&1 | tee "$LOG"
+            grep -q 'RAMI_RUNTIME: refresh_ok' "$LOG"
+            grep -q 'RAMI_V025: horizontal_first=true prefer_two_rows=true fold_true_complete=true joker_not_complete=true' "$LOG"
+            ! grep -q 'SCRIPT ERROR\|Parse Error\|Failed to load script' "$LOG"
+          done
+      - name: Collect
+        run: |
+          APK=$(find '${{ steps.export.outputs.build_directory }}' -type f -name '*.apk' | head -n1)
+          test -n "$APK"
+          cp "$APK" Rami_v0.0.25.apk
+          sha256sum Rami_v0.0.25.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rami_v0.0.25_APK
+          path: Rami_v0.0.25.apk
