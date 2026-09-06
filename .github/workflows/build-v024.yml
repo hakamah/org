@@ -14,7 +14,11 @@ jobs:
       - name: Apply patches
         run: |
           set -eux
-          for v in 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024; do python3 tools/patch_v${v}_*.py; done
+          for v in 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024; do
+            for script in tools/patch_v${v}_*.py; do
+              python3 "$script"
+            done
+          done
           grep -q 'RAMI_V024: dirty_refresh=true table_persistent=true style_cache=true score_single_pass=true visual_unchanged=true' GameTable.gd
           grep -q 'func _handle_table_gesture' GameTable.gd
           grep -q 'func _cartesian_index_choices' RamiGame.gd
@@ -22,6 +26,7 @@ jobs:
           grep -q 'const PLAYER_CARD_SIZE := Vector2(158, 225)' GameTable.gd
           grep -q 'var card_w: float = 148.0' GameTable.gd
           grep -q 'var card_h: float = 209.0' GameTable.gd
+          grep -q 'RAMI_PATCH_V024_GUARD' tools/patch_v024_zz_guard_nil.py
       - name: Cards
         run: |
           rm -rf assets/cards /tmp/deck /tmp/deck.zip; mkdir -p assets/cards
