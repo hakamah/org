@@ -1,7 +1,7 @@
-name: Build Rami APK v0.0.28 buildfix2
+name: Build Rami APK v0.0.28 buildfix3
 on:
   push:
-    branches: [rami-apk-v0.0.28-google-native-buildfix2]
+    branches: [rami-apk-v0.0.28-google-native-buildfix3]
   workflow_dispatch:
 permissions:
   contents: read
@@ -73,12 +73,10 @@ jobs:
           rm -rf android/build
           mkdir -p android/build
           TEMPLATE="$HOME/.local/share/godot/export_templates/4.7.2.stable/android_source.zip"
-          unzip -l "$TEMPLATE" | head -40 || true
           unzip -q "$TEMPLATE" -d android/build
           test -f android/build/build.gradle
           test -f android/build/gradlew
           chmod +x android/build/gradlew
-          find android/build -maxdepth 2 -type f | sort | head -80
 
       - name: Add RAMI Credential Manager native bridge
         run: |
@@ -116,7 +114,16 @@ jobs:
           export/android/android_sdk_path = "$ANDROID_SDK_ROOT"
           export/android/java_sdk_path = "$JAVA_HOME"
           EOF
-          cat "$HOME/.config/godot/editor_settings-4.tres"
+
+      - name: Import Godot project and build script class cache
+        run: |
+          set -euo pipefail
+          G=/tmp/godot/Godot_v4.7.2-stable_linux.x86_64
+          timeout 180s "$G" --headless --path "$GITHUB_WORKSPACE" --import 2>&1 | tee /tmp/import.log
+          test -f .godot/global_script_class_cache.cfg
+          grep -q 'CardInstance' .godot/global_script_class_cache.cfg
+          grep -q 'RamiGame' .godot/global_script_class_cache.cfg
+          ! grep -q 'SCRIPT ERROR\|Parse Error\|Failed to load script' /tmp/import.log
 
       - name: Godot parse and game tests
         run: |
