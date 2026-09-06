@@ -1,9 +1,9 @@
-name: Build Rami APK v0.0.13 Table Extensions
+name: Build Rami APK v0.0.14 Discard Icon
 
 on:
   push:
     branches:
-      - rami-apk-v0.0.13-table-extensions
+      - rami-apk-v0.0.14-discard-icon
   workflow_dispatch:
 
 permissions:
@@ -25,11 +25,12 @@ jobs:
           python3 tools/patch_v011_discard_table.py
           python3 tools/patch_v012_table_persistence.py
           python3 tools/patch_v013_table_extensions.py
-          grep -q 'RAMI_V012: table_xxl=true persistent_meld_render=true app_icon=true' GameTable.gd
+          python3 tools/patch_v014_discard_icon.py
           grep -q 'RAMI_V013: meld_touch_anywhere=true extend_runs=true joker_slot_order=true joker_recovery=true' GameTable.gd
+          grep -q 'RAMI_V014: discard_zone_always=true empty_discard_touch=true icon_padded=true' GameTable.gd
           ! grep -q 'DÉFAUSSER\\nFin du tour' GameTable.gd
-          grep -q 'config/icon="res://assets/app_icon.svg"' project.godot
-          grep -q 'launcher_icons/main_192x192="res://assets/app_icon.svg"' export_presets.cfg
+          grep -q 'RAMI_ICON_V014_PADDED' assets/app_icon.svg
+          grep -q 'version/name="0.0.14"' export_presets.cfg
 
       - name: Fetch public domain playing cards
         run: |
@@ -103,7 +104,7 @@ jobs:
           grep -q 'RAMI_RUNTIME: ready_start' /tmp/rami-input.log
           grep -q 'RAMI_RUNTIME: dealt player=13 ai1=13 ai2=13 stock=68 discard=1' /tmp/rami-input.log
           grep -q 'RAMI_RUNTIME: refresh_ok' /tmp/rami-input.log
-          grep -q 'RAMI_V013: meld_touch_anywhere=true extend_runs=true joker_slot_order=true joker_recovery=true' /tmp/rami-input.log
+          grep -q 'RAMI_V014: discard_zone_always=true empty_discard_touch=true icon_padded=true' /tmp/rami-input.log
           grep -q 'RAMI_INPUT_TEST: PASS stock_touch_route' /tmp/rami-input.log
           ! grep -q 'SCRIPT ERROR' /tmp/rami-input.log
           ! grep -q 'Parse Error' /tmp/rami-input.log
@@ -127,6 +128,15 @@ jobs:
           ! grep -q 'SCRIPT ERROR' /tmp/rami-table-ext.log
           ! grep -q 'Parse Error' /tmp/rami-table-ext.log
 
+      - name: Empty discard touch regression test
+        run: |
+          set -euo pipefail
+          GODOT=/home/runner/.local/share/godot/godot_executable/Godot_v4.7.2-stable_linux.x86_64
+          "$GODOT" --headless --resolution 2400x1080 --path "$GITHUB_WORKSPACE" -s res://tests/TestDiscardZone.gd 2>&1 | tee /tmp/rami-discard.log
+          grep -q 'RAMI_DISCARD_TEST: PASS empty_discard_touch=true' /tmp/rami-discard.log
+          ! grep -q 'SCRIPT ERROR' /tmp/rami-discard.log
+          ! grep -q 'Parse Error' /tmp/rami-discard.log
+
       - name: Responsive runtime smoke tests
         run: |
           set -euo pipefail
@@ -138,7 +148,7 @@ jobs:
             grep -q 'RAMI_RUNTIME: ready_start' "$LOG"
             grep -q 'RAMI_RUNTIME: dealt player=13 ai1=13 ai2=13 stock=68 discard=1' "$LOG"
             grep -q 'RAMI_RUNTIME: refresh_ok' "$LOG"
-            grep -q 'RAMI_V013: meld_touch_anywhere=true extend_runs=true joker_slot_order=true joker_recovery=true' "$LOG"
+            grep -q 'RAMI_V014: discard_zone_always=true empty_discard_touch=true icon_padded=true' "$LOG"
             ! grep -q 'SCRIPT ERROR' "$LOG"
             ! grep -q 'Parse Error' "$LOG"
             ! grep -q 'Failed to load script' "$LOG"
@@ -149,13 +159,13 @@ jobs:
           set -eux
           APK="$(find "${{ steps.export.outputs.build_directory }}" -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.13.apk"
-          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.13.apk"
-          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.13.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/Rami_v0.0.14.apk"
+          sha256sum "$GITHUB_WORKSPACE/Rami_v0.0.14.apk"
+          ls -lh "$GITHUB_WORKSPACE/Rami_v0.0.14.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rami_v0.0.13_APK
-          path: Rami_v0.0.13.apk
+          name: Rami_v0.0.14_APK
+          path: Rami_v0.0.14.apk
           if-no-files-found: error
