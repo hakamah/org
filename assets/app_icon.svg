@@ -1,24 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <!-- RAMI_ICON_V014_PADDED: artwork deliberately inset for Android adaptive icon cropping -->
+  <!-- RAMI_ICON_V015_FINAL: safe-zone tuned for Samsung/Android launcher masks -->
   <defs>
-    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6f2f12"/><stop offset="1" stop-color="#351407"/></linearGradient>
-    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff0a0"/><stop offset=".45" stop-color="#e7b530"/><stop offset="1" stop-color="#98630b"/></linearGradient>
-    <filter id="shadow"><feDropShadow dx="0" dy="6" stdDeviation="6" flood-opacity=".35"/></filter>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f6945"/><stop offset="1" stop-color="#053c28"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff0a0"/><stop offset=".5" stop-color="#e7b530"/><stop offset="1" stop-color="#8e5b08"/></linearGradient>
+    <linearGradient id="banner" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f4f23"/><stop offset="1" stop-color="#102c19"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#000" flood-opacity=".35"/></filter>
   </defs>
 
-  <!-- Full-bleed background survives launcher masks, while the actual logo remains safely inset. -->
-  <rect width="512" height="512" fill="#5a260f"/>
-  <rect x="38" y="38" width="436" height="436" rx="108" fill="url(#wood)" stroke="#a9631b" stroke-width="6"/>
-  <rect x="76" y="76" width="360" height="360" rx="84" fill="#075333" stroke="url(#gold)" stroke-width="7"/>
+  <rect width="512" height="512" fill="#075333"/>
+  <rect x="54" y="54" width="404" height="404" rx="104" fill="url(#bg)" stroke="url(#gold)" stroke-width="7"/>
 
-  <!-- Smaller centered card fan: roughly 58% of canvas width. -->
   <g filter="url(#shadow)">
-    <g transform="translate(136 154) rotate(-16 48 76)"><rect width="96" height="152" rx="14" fill="#fffaf0" stroke="#d9ae45" stroke-width="2"/><text x="15" y="41" font-size="34" font-family="serif" font-weight="700" fill="#111">J</text><text x="16" y="74" font-size="31" fill="#111">♣</text></g>
-    <g transform="translate(180 135) rotate(-7 48 76)"><rect width="96" height="152" rx="14" fill="#fffaf0" stroke="#d9ae45" stroke-width="2"/><text x="14" y="41" font-size="34" font-family="serif" font-weight="700" fill="#c51d20">Q</text><text x="16" y="74" font-size="31" fill="#c51d20">♦</text></g>
-    <g transform="translate(224 128) rotate(4 48 76)"><rect width="96" height="152" rx="14" fill="#fffaf0" stroke="#d9ae45" stroke-width="2"/><text x="13" y="41" font-size="34" font-family="serif" font-weight="700" fill="#111">K</text><text x="16" y="74" font-size="31" fill="#111">♠</text></g>
-    <g transform="translate(268 145) rotate(14 48 76)"><rect width="96" height="152" rx="14" fill="#fffaf0" stroke="#d9ae45" stroke-width="2"/><text x="14" y="41" font-size="34" font-family="serif" font-weight="700" fill="#cf171b">A</text><text x="16" y="76" font-size="33" fill="#cf171b">♥</text></g>
+    <g transform="translate(124 156) rotate(-15 45 68)">
+      <rect width="90" height="136" rx="13" fill="#fffdf8" stroke="#d8c27a" stroke-width="2"/>
+      <text x="14" y="38" font-size="31" font-family="serif" font-weight="700" fill="#d32222">A</text>
+      <text x="15" y="69" font-size="31" fill="#d32222">♥</text>
+    </g>
+    <g transform="translate(176 137) rotate(-6 45 68)">
+      <rect width="90" height="136" rx="13" fill="#fffdf8" stroke="#d8c27a" stroke-width="2"/>
+      <text x="13" y="38" font-size="31" font-family="serif" font-weight="700" fill="#111">K</text>
+      <text x="14" y="69" font-size="31" fill="#111">♣</text>
+    </g>
+    <g transform="translate(228 136) rotate(6 45 68)">
+      <rect width="90" height="136" rx="13" fill="#fffdf8" stroke="#d8c27a" stroke-width="2"/>
+      <text x="13" y="38" font-size="31" font-family="serif" font-weight="700" fill="#d32222">Q</text>
+      <text x="14" y="69" font-size="31" fill="#d32222">♦</text>
+    </g>
+    <g transform="translate(280 155) rotate(15 45 68)">
+      <rect width="90" height="136" rx="13" fill="#fffdf8" stroke="#d8c27a" stroke-width="2"/>
+      <text x="14" y="38" font-size="31" font-family="serif" font-weight="700" fill="#111">J</text>
+      <text x="14" y="69" font-size="31" fill="#111">♠</text>
+    </g>
   </g>
 
-  <rect x="116" y="326" width="280" height="92" rx="30" fill="url(#wood)" stroke="url(#gold)" stroke-width="6" filter="url(#shadow)"/>
-  <text x="256" y="389" text-anchor="middle" font-size="58" font-family="serif" font-weight="900" fill="url(#gold)" stroke="#714708" stroke-width="1.5">RAMI</text>
+  <path d="M118 318 Q256 280 394 318 L376 400 Q256 432 136 400 Z" fill="url(#banner)" stroke="url(#gold)" stroke-width="7" filter="url(#shadow)"/>
+  <text x="256" y="374" text-anchor="middle" font-size="66" font-family="serif" font-weight="900" fill="#f5d46a" stroke="#6f4608" stroke-width="1.6">RAMI</text>
 </svg>
