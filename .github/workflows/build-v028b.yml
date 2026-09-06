@@ -1,0 +1,136 @@
+name: Build Rami APK v0.0.28 buildfix
+on:
+  push:
+    branches: [rami-apk-v0.0.28-google-native-buildfix]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Apply RAMI patches
+        run: |
+          set -eux
+          for v in 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024 025 026 027 028; do
+            for script in tools/patch_v${v}_*.py; do
+              python3 "$script"
+            done
+          done
+          grep -q 'version/name="0.0.28"' export_presets.cfg
+          grep -q 'gradle_build/use_gradle_build=true' export_presets.cfg
+          grep -q 'google_auth_url="https://ukuiymqlfldglsowqjcn.supabase.co/functions/v1/rami-google"' project.godot
+          grep -q 'server_url="https://ukuiymqlfldglsowqjcn.supabase.co/functions/v1/rami-api"' project.godot
+          grep -q 'SE CONNECTER AVEC GOOGLE' Main.gd
+          grep -q 'RAMI_V028: supabase_online=true google_native=true nonce_bound=true' GameTable.gd
+
+      - name: RAMI server unit tests
+        run: |
+          python3 -m pip install -q -r rami_server/requirements.txt
+          PYTHONPATH=rami_server python3 -m unittest rami_server/test_elo.py
+
+      - name: Fetch public-domain cards
+        run: |
+          rm -rf assets/cards /tmp/deck /tmp/deck.zip; mkdir -p assets/cards
+          curl -L --fail https://github.com/AustinGabriel/The-Public-Domain-Deck-Public-Domain-and-CC0-Playing-Cards/archive/refs/heads/main.zip -o /tmp/deck.zip
+          unzip -q /tmp/deck.zip -d /tmp/deck
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          root=list(Path('/tmp/deck').glob('*/png cards'))[0]; dst=Path('assets/cards')
+          ranks=[('A','ace'),('2','2'),('3','3'),('4','4'),('5','5'),('6','6'),('7','7'),('8','8'),('9','9'),('10','10'),('J','jack'),('Q','queen'),('K','king')]
+          for s in ['spades','hearts','diamonds','clubs']:
+              for out,name in ranks: shutil.copy2(root/'card fronts'/s/f'{name} of {s}.png',dst/f'{s}_{out}.png')
+          shutil.copy2(root/'card fronts'/'jokers'/'black joker.png',dst/'joker_black.png')
+          shutil.copy2(root/'card fronts'/'jokers'/'red joker.png',dst/'joker_red.png')
+          shutil.copy2(root/'card backs'/'card back red.png',dst/'back_red.png')
+          assert len(list(dst.glob('*.png'))) == 55
+          PY
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Godot 4.7.2 and Android export templates
+        run: |
+          set -eux
+          curl -L --fail https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7.2-stable_linux.x86_64
+          curl -L --fail https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz -o /tmp/templates.tpz
+          rm -rf /tmp/godot_templates
+          mkdir -p /tmp/godot_templates "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          unzip -q /tmp/templates.tpz -d /tmp/godot_templates
+          cp -a /tmp/godot_templates/templates/. "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
+          /tmp/godot/Godot_v4.7.2-stable_linux.x86_64 --version
+
+      - name: Create Android Gradle build template
+        run: |
+          set -eux
+          G=/tmp/godot/Godot_v4.7.2-stable_linux.x86_64
+          timeout 90s "$G" --headless --path "$GITHUB_WORKSPACE" --install-android-build-template --quit || RC=$?
+          RC=${RC:-0}
+          if [ "$RC" -ne 0 ] && [ "$RC" -ne 124 ]; then exit "$RC"; fi
+          test -d android/build
+          find android/build -maxdepth 2 -type f | sort | head -80
+
+      - name: Add RAMI Credential Manager native bridge
+        run: |
+          set -eux
+          mkdir -p android/build/src/com/hakamah/rami/auth
+          cp android_custom/RamiCredentialBridge.java android/build/src/com/hakamah/rami/auth/RamiCredentialBridge.java
+          python3 - <<'PY'
+          from pathlib import Path
+          candidates=[Path('android/build/build.gradle'),Path('android/build/build.gradle.kts')]
+          target=next((p for p in candidates if p.exists()),None)
+          if target is None:
+              found=list(Path('android/build').rglob('build.gradle'))
+              if not found: raise SystemExit('No build.gradle found')
+              target=found[0]
+          text=target.read_text(encoding='utf-8')
+          if '// RAMI_CREDENTIAL_MANAGER_DEPENDENCIES' not in text:
+              text += '''\n\n// RAMI_CREDENTIAL_MANAGER_DEPENDENCIES\ndependencies {\n    implementation "androidx.credentials:credentials:1.6.0"\n    implementation "androidx.credentials:credentials-play-services-auth:1.6.0"\n    implementation "com.google.android.libraries.identity.googleid:googleid:1.2.0"\n}\n'''
+          target.write_text(text,encoding='utf-8')
+          print('Patched',target)
+          PY
+          grep -R -n 'RAMI_CREDENTIAL_MANAGER_DEPENDENCIES' android/build
+
+      - name: Generate RAMI test signing key and print OAuth fingerprint
+        run: |
+          set -eux
+          keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=RAMI Android Test,O=RAMI,C=FR'
+          echo '=== RAMI_ANDROID_OAUTH_PACKAGE=com.hakamah.rami ==='
+          keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | tee /tmp/keyinfo.txt
+          grep 'SHA1:' /tmp/keyinfo.txt
+
+      - name: Godot parse and game tests
+        run: |
+          set -euo pipefail
+          G=/tmp/godot/Godot_v4.7.2-stable_linux.x86_64
+          timeout 25s "$G" --headless --path "$GITHUB_WORKSPACE" res://tests/TestRunner.tscn 2>&1 | tee /tmp/rules.log
+          grep -q 'RAMI_TESTS: PASS' /tmp/rules.log
+          ! grep -q 'SCRIPT ERROR\|Parse Error\|Failed to load script' /tmp/rules.log
+          for SCENE in Main.tscn Multiplayer.tscn GameTable.tscn; do
+            LOG=/tmp/v028-${SCENE}.log
+            timeout 8s "$G" --headless --resolution 1600x900 --path "$GITHUB_WORKSPACE" res://${SCENE} --quit-after 2 2>&1 | tee "$LOG"
+            ! grep -q 'SCRIPT ERROR\|Parse Error\|Failed to load script' "$LOG"
+          done
+          grep -q 'RAMI_RUNTIME: refresh_ok' /tmp/v028-GameTable.tscn.log
+
+      - name: Export RAMI v0.0.28 release APK with Gradle
+        run: |
+          set -eux
+          G=/tmp/godot/Godot_v4.7.2-stable_linux.x86_64
+          "$G" --headless --path "$GITHUB_WORKSPACE" --export-release Android "$GITHUB_WORKSPACE/Rami_v0.0.28.apk" 2>&1 | tee /tmp/export.log
+          test -f Rami_v0.0.28.apk
+          sha256sum Rami_v0.0.28.apk | tee /tmp/apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rami_v0.0.28_APK
+          path: Rami_v0.0.28.apk
