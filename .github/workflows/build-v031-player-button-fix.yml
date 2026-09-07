@@ -1,8 +1,8 @@
-name: Build RAMI v0.0.32 Real Toggle Buttons
+name: Build RAMI v0.0.33 Purple Clickable Selector
 
 on:
   push:
-    branches: [rami-v0.0.32-real-toggle-buttons]
+    branches: [rami-v0.0.33-purple-selector-fix]
   workflow_dispatch:
 
 permissions:
@@ -16,22 +16,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Apply RAMI patches 009 through 032
+      - name: Apply RAMI patches 009 through 033
         run: |
           set -eux
-          for v in 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024 025 026 027 028 029 030 031 032; do
+          for v in 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024 025 026 027 028 029 030 031 032 033; do
             for script in tools/patch_v${v}_*.py; do
               test -f "$script"
               python3 "$script"
             done
           done
           grep -q '^permissions/internet=true$' export_presets.cfg || printf '\npermissions/internet=true\n' >> export_presets.cfg
-          grep -q 'version/name="0.0.32"' export_presets.cfg
+          grep -q 'version/name="0.0.33"' export_presets.cfg
+          grep -q 'version/code=35' export_presets.cfg
           grep -q 'package/unique_name="com.hakamah.rami"' export_presets.cfg
-          grep -q 'RAMI_V032: player_count_real_toggle_group=true' GameTable.gd
-          grep -q 'toggle_mode = true' Multiplayer.gd
-          grep -q 'button_group = count_button_group' Multiplayer.gd
-          grep -q 'toggled.connect(_on_count_toggled.bind(count))' Multiplayer.gd
+          grep -q 'RAMI_V033: player_count_purple_click_selector=true' GameTable.gd
+          grep -q 'toggle_mode = false' Multiplayer.gd
+          grep -q 'pressed.connect(_on_count_pressed.bind(count))' Multiplayer.gd
+          grep -q 'Color("#6A3FA0")' Multiplayer.gd
+          grep -q 'b.disabled = value' Multiplayer.gd
+          ! grep -q 'button_group = count_button_group' Multiplayer.gd
 
       - name: RAMI server unit tests
         run: |
@@ -143,37 +146,41 @@ jobs:
           ! grep -q 'SCRIPT ERROR\|Parse Error\|Failed to load script' /tmp/import.log
           timeout 30s "$G" --headless --path "$GITHUB_WORKSPACE" res://tests/TestRunner.tscn 2>&1 | tee /tmp/rules.log
           grep -q 'RAMI_TESTS: PASS' /tmp/rules.log
+          timeout 20s "$G" --headless --resolution 1600x900 --path "$GITHUB_WORKSPACE" res://tests/TestMultiplayerSelector.tscn 2>&1 | tee /tmp/selector.log
+          grep -q 'RAMI_SELECTOR_TESTS: PASS' /tmp/selector.log
+          ! grep -q 'SCRIPT ERROR\|Parse Error\|Failed to load script' /tmp/selector.log
           timeout 10s "$G" --headless --resolution 1600x900 --path "$GITHUB_WORKSPACE" res://Multiplayer.tscn --quit-after 2 2>&1 | tee /tmp/multi.log
           ! grep -q 'SCRIPT ERROR\|Parse Error\|Failed to load script' /tmp/multi.log
 
-      - name: Export RAMI v0.0.32 staging APK
+      - name: Export RAMI v0.0.33 staging APK
         run: |
           set -eux
           G=/tmp/godot/Godot_v4.7.2-stable_linux.x86_64
-          "$G" --headless --path "$GITHUB_WORKSPACE" --export-release Android "$GITHUB_WORKSPACE/RAMI_GAME_v0.0.32_REAL_TOGGLE_STAGE.apk" 2>&1 | tee /tmp/export.log
+          "$G" --headless --path "$GITHUB_WORKSPACE" --export-release Android "$GITHUB_WORKSPACE/RAMI_GAME_v0.0.33_PURPLE_SELECTOR_STAGE.apk" 2>&1 | tee /tmp/export.log
 
       - name: Verify staging APK
         run: |
           set -euo pipefail
-          APK="$GITHUB_WORKSPACE/RAMI_GAME_v0.0.32_REAL_TOGGLE_STAGE.apk"
+          APK="$GITHUB_WORKSPACE/RAMI_GAME_v0.0.33_PURPLE_SELECTOR_STAGE.apk"
           APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           BTDIR="$(dirname "$APKSIGNER")"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           "$BTDIR/aapt" dump badging "$APK" | tee /tmp/badging.txt
           "$BTDIR/aapt" dump permissions "$APK" | tee /tmp/permissions.txt
           grep -q "package: name='com.hakamah.rami'" /tmp/badging.txt
-          grep -q "versionName='0.0.32'" /tmp/badging.txt
+          grep -q "versionName='0.0.33'" /tmp/badging.txt
+          grep -q "versionCode='35'" /tmp/badging.txt
           grep -q 'android.permission.INTERNET' /tmp/permissions.txt
           unzip -p "$APK" 'classes*.dex' | strings | grep -q 'RamiCredentialBridge'
-          sha256sum "$APK" > "$GITHUB_WORKSPACE/RAMI_GAME_v0.0.32_REAL_TOGGLE_STAGE.apk.sha256.txt"
+          sha256sum "$APK" > "$GITHUB_WORKSPACE/RAMI_GAME_v0.0.33_PURPLE_SELECTOR_STAGE.apk.sha256.txt"
           (cd "$(dirname "$BTDIR")" && zip -qr "$GITHUB_WORKSPACE/RAMI_ANDROID_SIGNING_TOOLS.zip" "$(basename "$BTDIR")")
 
       - name: Upload staging build
         uses: actions/upload-artifact@v4
         with:
-          name: RAMI_v0.0.32_REAL_TOGGLE_STAGE_AND_SIGNING_TOOLS
+          name: RAMI_v0.0.33_PURPLE_SELECTOR_STAGE_AND_SIGNING_TOOLS
           path: |
-            RAMI_GAME_v0.0.32_REAL_TOGGLE_STAGE.apk
-            RAMI_GAME_v0.0.32_REAL_TOGGLE_STAGE.apk.sha256.txt
+            RAMI_GAME_v0.0.33_PURPLE_SELECTOR_STAGE.apk
+            RAMI_GAME_v0.0.33_PURPLE_SELECTOR_STAGE.apk.sha256.txt
             RAMI_ANDROID_SIGNING_TOOLS.zip
           retention-days: 7
