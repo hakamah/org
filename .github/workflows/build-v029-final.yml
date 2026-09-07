@@ -89,7 +89,6 @@ jobs:
           mkdir -p android/build android/plugins
           unzip -q "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_source.zip" -d android/build
           touch android/build/.gdignore
-          # Godot compares this marker to the short project feature version.
           printf '%s\n' '4.7.2.stable' > android/.build_version
           chmod +x android/build/gradlew
           test -f android/build/build.gradle
@@ -109,38 +108,37 @@ jobs:
           }
           EOF
 
-      - name: Restore stable RAMI release signing key
-        env:
-          RAMI_KEYSTORE_B64: ${{ secrets.RAMI_KEYSTORE_B64 }}
-          RAMI_KEYSTORE_PASSWORD: ${{ secrets.RAMI_KEYSTORE_PASSWORD }}
-          RAMI_KEY_ALIAS: ${{ secrets.RAMI_KEY_ALIAS }}
-          RAMI_KEY_PASSWORD: ${{ secrets.RAMI_KEY_PASSWORD }}
+      - name: Generate disposable staging signing key
         run: |
           set -euo pipefail
-          test -n "$RAMI_KEYSTORE_B64"
-          test -n "$RAMI_KEYSTORE_PASSWORD"
-          test -n "$RAMI_KEY_ALIAS"
-          test -n "$RAMI_KEY_PASSWORD"
-          printf '%s' "$RAMI_KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/RAMI_RELEASE_KEY.jks"
-          keytool -list -v -keystore "$GITHUB_WORKSPACE/RAMI_RELEASE_KEY.jks" -storepass "$RAMI_KEYSTORE_PASSWORD" -alias "$RAMI_KEY_ALIAS" | tee /tmp/rami-key.txt
-          grep -q 'SHA1: 1E:42:C6:59:A9:26:FD:C0:77:64:06:69:57:A2:8E:A9:F1:9F:78:44' /tmp/rami-key.txt
+          keytool -genkeypair -v \
+            -keystore "$GITHUB_WORKSPACE/RAMI_STAGE_KEY.jks" \
+            -storepass android \
+            -alias rami_stage \
+            -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname 'CN=RAMI Build Stage,O=RAMI,C=FR'
           python3 - <<'PY'
           from pathlib import Path
-          import os
+          import os,re
           p=Path('export_presets.cfg')
           s=p.read_text()
-          import re
-          def setv(key,val):
-              global s
+          values={
+              'keystore/release': str(Path(os.environ['GITHUB_WORKSPACE'])/'RAMI_STAGE_KEY.jks'),
+              'keystore/release_user': 'rami_stage',
+              'keystore/release_password': 'android',
+          }
+          for key,val in values.items():
               pat=re.compile(r'^'+re.escape(key)+r'=.*$',re.M)
               line=f'{key}="{val}"'
-              if pat.search(s): s=pat.sub(line,s,1)
-              else: s += '\n'+line+'\n'
-          setv('keystore/release', str(Path(os.environ['GITHUB_WORKSPACE'])/'RAMI_RELEASE_KEY.jks'))
-          setv('keystore/release_user', os.environ['RAMI_KEY_ALIAS'])
-          setv('keystore/release_password', os.environ['RAMI_KEYSTORE_PASSWORD'])
+              if pat.search(s):
+                  s=pat.sub(line,s,1)
+              else:
+                  s += '\n'+line+'\n'
           p.write_text(s)
           PY
+          # Guard: the production certificate/private key is never present on GitHub runners.
+          test ! -f "$GITHUB_WORKSPACE/RAMI_RELEASE_KEY.jks"
 
       - name: Configure Godot Android SDK path
         run: |
@@ -180,34 +178,32 @@ jobs:
           done
           grep -q 'RAMI_RUNTIME: refresh_ok' /tmp/v029-GameTable.tscn.log
 
-      - name: Export signed RAMI v0.0.29 APK
-        env:
-          RAMI_KEYSTORE_PASSWORD: ${{ secrets.RAMI_KEYSTORE_PASSWORD }}
-          RAMI_KEY_ALIAS: ${{ secrets.RAMI_KEY_ALIAS }}
-          RAMI_KEY_PASSWORD: ${{ secrets.RAMI_KEY_PASSWORD }}
+      - name: Export RAMI v0.0.29 staging APK
         run: |
           set -eux
           G=/tmp/godot/Godot_v4.7.2-stable_linux.x86_64
-          "$G" --headless --path "$GITHUB_WORKSPACE" --export-release Android "$GITHUB_WORKSPACE/RAMI_GAME_v0.0.29_FINAL_GOOGLE.apk" 2>&1 | tee /tmp/export.log
-          test -s "$GITHUB_WORKSPACE/RAMI_GAME_v0.0.29_FINAL_GOOGLE.apk"
+          "$G" --headless --path "$GITHUB_WORKSPACE" --export-release Android "$GITHUB_WORKSPACE/RAMI_GAME_v0.0.29_FINAL_GOOGLE_STAGE.apk" 2>&1 | tee /tmp/export.log
+          test -s "$GITHUB_WORKSPACE/RAMI_GAME_v0.0.29_FINAL_GOOGLE_STAGE.apk"
 
-      - name: Verify final APK identity and signature
+      - name: Verify staging APK and collect offline signing tools
         run: |
           set -euo pipefail
-          APK="$GITHUB_WORKSPACE/RAMI_GAME_v0.0.29_FINAL_GOOGLE.apk"
+          APK="$GITHUB_WORKSPACE/RAMI_GAME_v0.0.29_FINAL_GOOGLE_STAGE.apk"
           APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apkverify.txt
-          grep -qi 'Verified using v2 scheme.*true\|Verified using v3 scheme.*true' /tmp/apkverify.txt
-          grep -qi 'Signer #1 certificate SHA-1 digest: 1e42c659a926fdc07764066957a28ea9f19f7844' /tmp/apkverify.txt
-          sha256sum "$APK" | tee "$GITHUB_WORKSPACE/RAMI_GAME_v0.0.29_FINAL_GOOGLE.apk.sha256.txt"
+          BTDIR="$(dirname "$APKSIGNER")"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apkverify-stage.txt
+          sha256sum "$APK" | tee "$GITHUB_WORKSPACE/RAMI_GAME_v0.0.29_FINAL_GOOGLE_STAGE.apk.sha256.txt"
+          (cd "$(dirname "$BTDIR")" && zip -qr "$GITHUB_WORKSPACE/RAMI_ANDROID_SIGNING_TOOLS.zip" "$(basename "$BTDIR")")
+          test -s "$GITHUB_WORKSPACE/RAMI_ANDROID_SIGNING_TOOLS.zip"
 
-      - name: Upload final APK artifact
+      - name: Upload staging build for final offline release signing
         uses: actions/upload-artifact@v4
         with:
-          name: RAMI_GAME_v0.0.29_FINAL_GOOGLE
+          name: RAMI_v0.0.29_STAGE_AND_SIGNING_TOOLS
           path: |
-            RAMI_GAME_v0.0.29_FINAL_GOOGLE.apk
-            RAMI_GAME_v0.0.29_FINAL_GOOGLE.apk.sha256.txt
+            RAMI_GAME_v0.0.29_FINAL_GOOGLE_STAGE.apk
+            RAMI_GAME_v0.0.29_FINAL_GOOGLE_STAGE.apk.sha256.txt
+            RAMI_ANDROID_SIGNING_TOOLS.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
